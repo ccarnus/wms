@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wms}
+      POSTGRES_USER: ${POSTGRES_USER:-wms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wms_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wms_user} -d ${POSTGRES_DB:-wms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - wms-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wms-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-wms}
+      DB_USER: ${POSTGRES_USER:-wms_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-wms_password}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/usr/src/app
+      - backend_node_modules:/usr/src/app/node_modules
+    command: npm run dev
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - wms-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wms-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/usr/src/app
+      - frontend_node_modules:/usr/src/app/node_modules
+    command: npm run dev
+    depends_on:
+      - backend
+    networks:
+      - wms-net
+
+volumes:
+  postgres_data:
+  backend_node_modules:
+  frontend_node_modules:
+
+networks:
+  wms-net:
