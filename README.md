@@ -1,18 +1,18 @@
 # WMS As A Service
 
-Containerized WMS starter stack with:
+Containerized WMS production stack with:
 
-- `frontend`: React + Tailwind (Vite)
+- `frontend`: React + Tailwind built as static assets and served by Nginx
 - `backend`: Node.js + Express REST API
 - `db`: PostgreSQL 16
-- `docker-compose`: one-command local startup
+- `docker-compose`: one-command local/prod startup (same file)
 
 ## Project Structure
 
 ```txt
 .
 |-- backend/              # Express API
-|-- frontend/             # React + Tailwind UI
+|-- frontend/             # React + Tailwind UI + Nginx config
 |-- database/init/        # PostgreSQL bootstrap SQL
 |-- docker-compose.yml
 `-- .env.example
@@ -40,9 +40,8 @@ docker compose up --build
 
 3. Open the apps:
 
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:3000`
-- Health endpoint: `http://localhost:3000/api/health`
+- Frontend + API entrypoint: `http://localhost:8080` (or `APP_PORT`)
+- Health endpoint through Nginx: `http://localhost:8080/api/health`
 
 ## Available API Endpoints
 
@@ -70,6 +69,7 @@ Example movement payload:
 ## Notes
 
 - Database schema and sample data are loaded from `database/init/001_schema.sql` on first DB boot.
+- This compose is production-oriented: no source bind mounts, no dev servers, frontend served by Nginx.
 - If you want to reset seeded data, remove the compose volumes and restart:
 
 ```bash

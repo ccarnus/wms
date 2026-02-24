@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/+$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const apiDisplayUrl = apiBaseUrl || "same-origin (/api)";
+const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     headers: { "Content-Type": "application/json" },
     ...options
   });
@@ -103,7 +105,7 @@ function App() {
         <header className="rounded-2xl border border-black/10 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
           <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-accent">Warehouse Management Service</p>
           <h1 className="text-3xl font-black sm:text-4xl">WMS Operations Console</h1>
-          <p className="mt-2 text-sm text-black/70">API base URL: {apiBaseUrl}</p>
+          <p className="mt-2 text-sm text-black/70">API base URL: {apiDisplayUrl}</p>
           {health && <p className="mt-1 text-sm text-black/70">Backend status: {health.status}</p>}
         </header>
 
