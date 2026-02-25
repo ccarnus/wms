@@ -48,6 +48,8 @@ const buildJs = async () => {
     bundle: true,
     outfile: path.join(assetsDir, "app.js"),
     format: "esm",
+    jsx: "automatic",
+    jsxImportSource: "react",
     target: ["es2020"],
     minify: true,
     sourcemap: false,

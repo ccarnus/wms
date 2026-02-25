@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
@@ -85,11 +85,29 @@ const getInitialStoredValue = (key, fallbackValue = "") => {
     return fallbackValue;
   }
 
-  const storedValue = window.localStorage.getItem(key);
+  let storedValue = null;
+  try {
+    storedValue = window.localStorage.getItem(key);
+  } catch (_error) {
+    return fallbackValue;
+  }
+
   if (!storedValue) {
     return fallbackValue;
   }
   return storedValue;
+};
+
+const persistStoredValue = (key, value) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
 };
 
 function OperatorTaskScreen() {
@@ -109,11 +127,11 @@ function OperatorTaskScreen() {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    window.localStorage.setItem("wms.operator.id", operatorId);
+    persistStoredValue("wms.operator.id", operatorId);
   }, [operatorId]);
 
   useEffect(() => {
-    window.localStorage.setItem("wms.operator.jwt", jwtToken);
+    persistStoredValue("wms.operator.jwt", jwtToken);
   }, [jwtToken]);
 
   const expectedTaskQuantity = useMemo(() => {

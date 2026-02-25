@@ -146,6 +146,13 @@ Example order event payloads:
   - selectable refresh mode:
     - 10-second polling, or
     - Socket.IO subscription (`TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`) with a manager JWT.
+- Frontend now includes an Inventory Dashboard with:
+  - inventory KPI cards (`total units`, `SKU count`, `out-of-stock`, `low stock`, location/warehouse coverage),
+  - stock aggregation by warehouse,
+  - low-stock SKU list with threshold filter,
+  - top SKUs by units,
+  - recent inventory movements.
+- The HMI now uses a left sidebar menu to switch between `Manager`, `Operator`, and `Inventory` views.
 - Frontend build no longer uses Vite. Static assets are bundled with `esbuild` + `postcss` into `frontend/build` and served by Nginx.
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000`) using:
   - task priority (`highest first`)

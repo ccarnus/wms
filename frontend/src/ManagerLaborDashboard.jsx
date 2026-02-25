@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 
 const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
@@ -31,11 +31,30 @@ const getInitialStoredValue = (key, fallbackValue = "") => {
   if (typeof window === "undefined") {
     return fallbackValue;
   }
-  const storedValue = window.localStorage.getItem(key);
+
+  let storedValue = null;
+  try {
+    storedValue = window.localStorage.getItem(key);
+  } catch (_error) {
+    return fallbackValue;
+  }
+
   if (!storedValue) {
     return fallbackValue;
   }
   return storedValue;
+};
+
+const persistStoredValue = (key, value) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
 };
 
 const getAuthHeaders = (jwtToken) => {
@@ -151,11 +170,11 @@ function ManagerLaborDashboard() {
   }, [loadDashboardData]);
 
   useEffect(() => {
-    window.localStorage.setItem("wms.manager.refreshMode", refreshMode);
+    persistStoredValue("wms.manager.refreshMode", refreshMode);
   }, [refreshMode]);
 
   useEffect(() => {
-    window.localStorage.setItem("wms.manager.jwt", managerJwtToken);
+    persistStoredValue("wms.manager.jwt", managerJwtToken);
   }, [managerJwtToken]);
 
   useEffect(() => {
