@@ -48,6 +48,9 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_QUEUE_TASK_GENERATION: ${REDIS_QUEUE_TASK_GENERATION:-task-generation}
+      REDIS_REALTIME_CHANNEL: ${REDIS_REALTIME_CHANNEL:-wms:realtime-events}
+      JWT_SECRET: ${JWT_SECRET:-change_this_in_production}
+      SOCKET_IO_CORS_ORIGIN: ${SOCKET_IO_CORS_ORIGIN:-*}
       TASK_PICK_BASE_TIME_SECONDS: ${TASK_PICK_BASE_TIME_SECONDS:-90}
       TASK_PICK_TIME_PER_UNIT_SECONDS: ${TASK_PICK_TIME_PER_UNIT_SECONDS:-12}
       TASK_PUTAWAY_BASE_TIME_SECONDS: ${TASK_PUTAWAY_BASE_TIME_SECONDS:-75}
@@ -85,6 +88,7 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_QUEUE_TASK_GENERATION: ${REDIS_QUEUE_TASK_GENERATION:-task-generation}
+      REDIS_REALTIME_CHANNEL: ${REDIS_REALTIME_CHANNEL:-wms:realtime-events}
       TASK_GENERATION_WORKER_CONCURRENCY: ${TASK_GENERATION_WORKER_CONCURRENCY:-4}
       TASK_PICK_BASE_TIME_SECONDS: ${TASK_PICK_BASE_TIME_SECONDS:-90}
       TASK_PICK_TIME_PER_UNIT_SECONDS: ${TASK_PICK_TIME_PER_UNIT_SECONDS:-12}
@@ -112,8 +116,36 @@ services:
       DB_NAME: ${POSTGRES_DB:-wms}
       DB_USER: ${POSTGRES_USER:-wms_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-wms_password}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_REALTIME_CHANNEL: ${REDIS_REALTIME_CHANNEL:-wms:realtime-events}
       TASK_ASSIGNMENT_INTERVAL_MS: ${TASK_ASSIGNMENT_INTERVAL_MS:-10000}
       TASK_ASSIGNMENT_BATCH_SIZE: ${TASK_ASSIGNMENT_BATCH_SIZE:-200}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wms-net
+
+  labor-metrics-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "worker:labor-metrics"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-wms}
+      DB_USER: ${POSTGRES_USER:-wms_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-wms_password}
+      LABOR_METRICS_RUN_HOUR: ${LABOR_METRICS_RUN_HOUR:-23}
+      LABOR_METRICS_RUN_MINUTE: ${LABOR_METRICS_RUN_MINUTE:-59}
+      LABOR_METRICS_RUN_ON_STARTUP: ${LABOR_METRICS_RUN_ON_STARTUP:-false}
     depends_on:
       db:
         condition: service_healthy
@@ -125,7 +157,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-}
+        APP_API_URL: ${APP_API_URL:-}
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:80"

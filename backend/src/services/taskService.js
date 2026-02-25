@@ -1,5 +1,7 @@
 const { pool, query } = require("../db");
 const { Task, TASK_STATUSES } = require("../models/taskModel");
+const { publishRealtimeEvent } = require("../realtime/eventBus");
+const { REALTIME_EVENT_TYPES } = require("../realtime/eventTypes");
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TASK_STATUS_SET = new Set(TASK_STATUSES);
@@ -119,7 +121,47 @@ const getTaskById = async (taskId) => {
   if (rows.length === 0) {
     return null;
   }
-  return Task.fromRow(rows[0]);
+
+  const task = Task.fromRow(rows[0]);
+
+  const [zoneResult, lineResult] = await Promise.all([
+    query(
+      `SELECT
+        z.id,
+        z.name,
+        z.type,
+        z.warehouse_id AS "warehouseId"
+      FROM zones z
+      WHERE z.id = $1`,
+      [task.zoneId]
+    ),
+    query(
+      `SELECT
+        tl.id,
+        tl.sku_id AS "skuId",
+        p.sku,
+        p.name AS "skuName",
+        tl.from_location_id AS "fromLocationId",
+        from_loc.code AS "fromLocationCode",
+        tl.to_location_id AS "toLocationId",
+        to_loc.code AS "toLocationCode",
+        tl.quantity,
+        tl.status
+      FROM task_lines tl
+      INNER JOIN products p ON p.id = tl.sku_id
+      LEFT JOIN locations from_loc ON from_loc.id = tl.from_location_id
+      LEFT JOIN locations to_loc ON to_loc.id = tl.to_location_id
+      WHERE tl.task_id = $1
+      ORDER BY tl.id ASC`,
+      [task.id]
+    )
+  ]);
+
+  task.zone = zoneResult.rows[0] || null;
+  task.lines = lineResult.rows;
+  task.totalQuantity = lineResult.rows.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+
+  return task;
 };
 
 const listTasksPaginated = async ({
@@ -262,6 +304,41 @@ const updateTaskStatus = async (taskId, newStatus, options = {}) => {
 
     await client.query("COMMIT");
     inTransaction = false;
+
+    const taskUpdatedPayload = {
+      taskId: updatedTask.id,
+      status: updatedTask.status,
+      previousStatus: currentTask.status,
+      operatorId: updatedTask.assignedOperatorId,
+      zoneId: updatedTask.zoneId,
+      version: updatedTask.version,
+      updatedAt: updatedTask.updatedAt
+    };
+
+    try {
+      await publishRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.TASK_UPDATED,
+        payload: taskUpdatedPayload
+      });
+
+      if (updatedTask.status === "assigned" && updatedTask.assignedOperatorId) {
+        await publishRealtimeEvent({
+          type: REALTIME_EVENT_TYPES.TASK_ASSIGNED,
+          payload: {
+            taskId: updatedTask.id,
+            operatorId: updatedTask.assignedOperatorId,
+            zoneId: updatedTask.zoneId,
+            priority: updatedTask.priority,
+            status: updatedTask.status,
+            version: updatedTask.version,
+            assignedAt: updatedTask.updatedAt
+          }
+        });
+      }
+    } catch (error) {
+      console.error("[realtime] Failed to publish task status event", error);
+    }
+
     return updatedTask;
   } catch (error) {
     if (inTransaction) {

@@ -1,4 +1,6 @@
 const { query } = require("../db");
+const { publishRealtimeEvent } = require("../realtime/eventBus");
+const { REALTIME_EVENT_TYPES } = require("../realtime/eventTypes");
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPERATOR_STATUSES = Object.freeze(["available", "busy", "offline"]);
@@ -99,20 +101,30 @@ const updateOperatorStatus = async (operatorId, status) => {
   assertOperatorStatus(status, "status");
 
   const { rows, rowCount } = await query(
-    `UPDATE operators
-     SET status = $2::operator_status,
-         updated_at = NOW()
-     WHERE id = $1
-     RETURNING
-       id,
-       name,
-       role,
-       status,
-       shift_start AS "shiftStart",
-       shift_end AS "shiftEnd",
-       performance_score AS "performanceScore",
-       created_at AS "createdAt",
-       updated_at AS "updatedAt"`,
+    `WITH current_operator AS (
+       SELECT id, status
+       FROM operators
+       WHERE id = $1
+     ),
+     updated_operator AS (
+       UPDATE operators o
+       SET status = $2::operator_status,
+           updated_at = NOW()
+       FROM current_operator c
+       WHERE o.id = c.id
+       RETURNING
+         o.id,
+         o.name,
+         o.role,
+         o.status,
+         o.shift_start AS "shiftStart",
+         o.shift_end AS "shiftEnd",
+         o.performance_score AS "performanceScore",
+         o.created_at AS "createdAt",
+         o.updated_at AS "updatedAt",
+         c.status AS "previousStatus"
+     )
+     SELECT * FROM updated_operator`,
     [operatorId, status]
   );
 
@@ -120,7 +132,27 @@ const updateOperatorStatus = async (operatorId, status) => {
     throw createHttpError(404, "Operator not found");
   }
 
-  return rows[0];
+  const updatedOperator = rows[0];
+  const previousStatus = updatedOperator.previousStatus;
+  delete updatedOperator.previousStatus;
+
+  if (previousStatus !== updatedOperator.status) {
+    try {
+      await publishRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.OPERATOR_STATUS_UPDATED,
+        payload: {
+          operatorId: updatedOperator.id,
+          status: updatedOperator.status,
+          previousStatus,
+          updatedAt: updatedOperator.updatedAt
+        }
+      });
+    } catch (error) {
+      console.error("[realtime] Failed to publish operator status event", error);
+    }
+  }
+
+  return updatedOperator;
 };
 
 module.exports = {

@@ -93,7 +93,10 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
       COALESCE(ldm.units_processed, 0)::int AS "unitsProcessed",
       COALESCE(ldm.avg_task_time, 0)::double precision AS "avgTaskTime",
       COALESCE(ldm.utilization_percent, 0)::double precision AS "utilizationPercent",
-      COALESCE(active.active_tasks, 0)::int AS "activeTasks"
+      COALESCE(active.active_tasks, 0)::int AS "activeTasks",
+      current_task.id AS "currentTaskId",
+      current_task.type AS "currentTaskType",
+      current_task.status AS "currentTaskStatus"
     FROM operators o
     LEFT JOIN labor_daily_metrics ldm
       ON ldm.operator_id = o.id
@@ -104,6 +107,25 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
       WHERE t.assigned_operator_id = o.id
         AND t.status IN ('assigned'::task_status, 'in_progress'::task_status, 'paused'::task_status)
     ) active ON true
+    LEFT JOIN LATERAL (
+      SELECT
+        t.id,
+        t.type,
+        t.status
+      FROM tasks t
+      WHERE t.assigned_operator_id = o.id
+        AND t.status IN ('assigned'::task_status, 'in_progress'::task_status, 'paused'::task_status)
+      ORDER BY
+        CASE t.status
+          WHEN 'in_progress'::task_status THEN 0
+          WHEN 'paused'::task_status THEN 1
+          WHEN 'assigned'::task_status THEN 2
+          ELSE 3
+        END,
+        t.priority DESC,
+        t.created_at ASC
+      LIMIT 1
+    ) current_task ON true
     ORDER BY "utilizationPercent" DESC, "tasksCompleted" DESC, o.performance_score DESC, o.name ASC
     LIMIT $2
     OFFSET $3`,

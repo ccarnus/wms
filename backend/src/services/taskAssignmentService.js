@@ -1,5 +1,7 @@
 const { pool } = require("../db");
 const { Task } = require("../models/taskModel");
+const { publishRealtimeEvent } = require("../realtime/eventBus");
+const { REALTIME_EVENT_TYPES } = require("../realtime/eventTypes");
 
 const ACTIVE_TASK_STATUSES = ["assigned", "in_progress", "paused"];
 const DEFAULT_ASSIGNMENT_BATCH_SIZE = 200;
@@ -146,8 +148,10 @@ const assignTasks = async (options = {}) => {
     unassignedTasks: 0,
     availableOperators: 0,
     assignments: [],
+    realtimePublishFailures: 0,
     durationMs: 0
   };
+  const realtimeEvents = [];
 
   try {
     await client.query("BEGIN");
@@ -171,18 +175,54 @@ const assignTasks = async (options = {}) => {
       }
 
       stats.assignedTasks += 1;
-      stats.assignments.push({
+      const assignmentRecord = {
         taskId: assignedTask.id,
         operatorId: selectedOperator.operatorId,
         zoneId: assignedTask.zoneId,
         priority: assignedTask.priority,
         workload: selectedOperator.workload
+      };
+      stats.assignments.push(assignmentRecord);
+
+      realtimeEvents.push({
+        type: REALTIME_EVENT_TYPES.TASK_ASSIGNED,
+        payload: {
+          taskId: assignedTask.id,
+          operatorId: selectedOperator.operatorId,
+          zoneId: assignedTask.zoneId,
+          priority: assignedTask.priority,
+          status: assignedTask.status,
+          version: assignedTask.version,
+          assignedAt: assignedTask.updatedAt
+        }
+      });
+      realtimeEvents.push({
+        type: REALTIME_EVENT_TYPES.TASK_UPDATED,
+        payload: {
+          taskId: assignedTask.id,
+          status: assignedTask.status,
+          previousStatus: "created",
+          operatorId: selectedOperator.operatorId,
+          zoneId: assignedTask.zoneId,
+          version: assignedTask.version,
+          updatedAt: assignedTask.updatedAt
+        }
       });
     }
 
     await client.query("COMMIT");
     inTransaction = false;
     stats.durationMs = Date.now() - startedAt;
+
+    for (const event of realtimeEvents) {
+      try {
+        await publishRealtimeEvent(event);
+      } catch (error) {
+        stats.realtimePublishFailures += 1;
+        console.error("[realtime] Failed to publish assignment event", error);
+      }
+    }
+
     return stats;
   } catch (error) {
     if (inTransaction) {

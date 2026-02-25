@@ -8,6 +8,7 @@ Containerized WMS production stack with:
 - `redis`: background queue broker
 - `task-worker`: Node.js worker that generates tasks from order events
 - `assignment-worker`: Node.js worker that auto-assigns created tasks
+- `labor-metrics-worker`: Node.js worker that aggregates daily labor KPIs at 23:59
 - `docker-compose`: one-command local/prod startup (same file)
 
 ## Project Structure
@@ -71,6 +72,18 @@ docker compose up --build
 - `GET /api/labor/zone-workload?warehouse_id=&page=1&limit=50`
 - `POST /api/order-events`
 
+## WebSocket (Socket.IO)
+
+- Transport endpoint: same host/port as backend (`/socket.io`)
+- Authentication: JWT required (`auth.token`, `Authorization: Bearer ...`, or `query.token`)
+- Rooms:
+  - manager channel: `manager`
+  - operator channel: `operator:<operatorId>`
+- Event types:
+  - `TASK_ASSIGNED`
+  - `TASK_UPDATED`
+  - `OPERATOR_STATUS_UPDATED`
+
 Example task status update payload:
 
 ```json
@@ -124,12 +137,28 @@ Example order event payloads:
 - Database schema and sample data are loaded from `database/init/001_schema.sql` on first DB boot.
 - Order events are enqueued in Redis and processed asynchronously by `task-worker`.
 - Task generation resolves zones from `location_zones` mappings; missing mappings reject the job.
+- Frontend now includes a mobile-first Operator Task screen (`My Current Task`) with optimistic task actions and Socket.IO updates.
+- The operator screen uses `operatorId` + JWT token input to subscribe to operator-specific realtime rooms.
+- Frontend now includes a Manager Labor Dashboard with:
+  - live KPI cards,
+  - operator performance grid,
+  - zone workload heatmap,
+  - selectable refresh mode:
+    - 10-second polling, or
+    - Socket.IO subscription (`TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`) with a manager JWT.
+- Frontend build no longer uses Vite. Static assets are bundled with `esbuild` + `postcss` into `frontend/build` and served by Nginx.
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000`) using:
   - task priority (`highest first`)
   - zone matching (`operator_zones`)
   - available operators only
   - lowest workload first (`labor_daily_metrics.tasks_completed`)
   - one active task max per operator
+- Daily labor metrics aggregation runs at `23:59` via `labor-metrics-worker`:
+  - `tasks_completed`: count of completed tasks per operator on that date
+  - `avg_task_time`: average active task seconds for completed tasks
+  - `units_processed`: sum of completed task line quantities
+  - `utilization_percent`: `total_active_time / shift_duration * 100`, capped to `100`
+  - idempotent upsert (`ON CONFLICT (operator_id, date) DO UPDATE`) so reruns are safe
 - This compose is production-oriented: no source bind mounts, no dev servers, frontend served by Nginx.
 - If you want to reset seeded data, remove the compose volumes and restart:
 
