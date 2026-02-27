@@ -10,7 +10,8 @@
     "worker:assignments": "node src/workers/taskAssignmentWorker.js",
     "worker:labor-metrics": "node src/workers/laborMetricsWorker.js",
     "test": "node test/taskGenerationLogic.test.js && node test/laborMetricsAggregationService.test.js",
-    "seed:users": "node src/scripts/seedUsers.js"
+    "seed:users": "node src/scripts/seedUsers.js",
+    "seed:testdata": "node src/scripts/seedTestData.js"
   },
   "dependencies": {
     "bullmq": "^5.61.0",
