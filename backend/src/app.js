@@ -10,6 +10,7 @@ const tasksRoutes = require("./routes/tasks");
 const orderEventsRoutes = require("./routes/orderEvents");
 const operatorsRoutes = require("./routes/operators");
 const laborRoutes = require("./routes/labor");
+const usersRoutes = require("./routes/users");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -45,7 +46,9 @@ app.get("/", (_req, res) => {
       "/api/tasks/:taskId/cancel",
       "/api/labor/overview",
       "/api/labor/operator-performance",
-      "/api/labor/zone-workload"
+      "/api/labor/zone-workload",
+      "/api/users",
+      "/api/auth/change-password"
     ]
   });
 });
@@ -60,6 +63,7 @@ app.use("/api/order-events", orderEventsRoutes);
 app.use("/api/operators", operatorsRoutes);
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/labor", laborRoutes);
+app.use("/api/users", usersRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

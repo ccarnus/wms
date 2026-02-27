@@ -10,4 +10,4 @@ COPY src ./src
 
 EXPOSE 3000
 
-CMD ["npm", "start", "seed:users"]
+CMD ["sh", "-c", "npm run seed:users && npm start"]

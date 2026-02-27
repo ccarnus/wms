@@ -1,5 +1,5 @@
 const express = require("express");
-const { login, getUserById } = require("../services/authService");
+const { login, getUserById, changeOwnPassword } = require("../services/authService");
 const requireAuth = require("../middlewares/requireAuth");
 
 const router = express.Router();
@@ -35,6 +35,18 @@ router.get("/me", requireAuth, async (req, res, next) => {
       throw error;
     }
 
+    res.status(200).json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+    const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+
+    const user = await changeOwnPassword(req.user.userId, currentPassword, newPassword);
     res.status(200).json(user);
   } catch (error) {
     next(error);

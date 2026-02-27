@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import LoginScreen from "./LoginScreen";
+import ChangePasswordScreen from "./ChangePasswordScreen";
 import InventoryDashboard from "./InventoryDashboard";
 import ManagerLaborDashboard from "./ManagerLaborDashboard";
 import OperatorTaskScreen from "./OperatorTaskScreen";
+import UserManagementScreen from "./UserManagementScreen";
 
 const VIEWS = [
   {
@@ -19,12 +21,17 @@ const VIEWS = [
     id: "inventory",
     label: "Inventory",
     subtitle: "Stock and movement health"
+  },
+  {
+    id: "users",
+    label: "Users",
+    subtitle: "Manage user accounts"
   }
 ];
 
 const VIEWS_BY_ROLE = {
-  admin: ["manager", "operator", "inventory"],
-  warehouse_manager: ["manager", "operator", "inventory"],
+  admin: ["manager", "operator", "inventory", "users"],
+  warehouse_manager: ["manager", "operator", "inventory", "users"],
   supervisor: ["manager", "operator", "inventory"],
   operator: ["operator"],
   viewer: ["manager", "inventory"]
@@ -134,8 +141,26 @@ function App() {
     setAuth(null);
   }, []);
 
+  const handlePasswordChanged = useCallback(
+    (updatedUser) => {
+      const newAuth = { ...auth, user: { ...auth.user, ...updatedUser, mustChangePassword: false } };
+      safeStorageSet(AUTH_USER_KEY, JSON.stringify(newAuth.user));
+      setAuth(newAuth);
+    },
+    [auth]
+  );
+
   if (!auth?.token) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (auth.user?.mustChangePassword) {
+    return (
+      <ChangePasswordScreen
+        jwtToken={auth.token}
+        onPasswordChanged={handlePasswordChanged}
+      />
+    );
   }
 
   const activeView =
@@ -147,6 +172,9 @@ function App() {
     }
     if (view === "inventory") {
       return <InventoryDashboard jwtToken={auth.token} user={auth.user} />;
+    }
+    if (view === "users") {
+      return <UserManagementScreen jwtToken={auth.token} user={auth.user} />;
     }
     return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} />;
   })();

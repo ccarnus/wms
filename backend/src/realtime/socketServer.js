@@ -2,12 +2,34 @@ const { Server } = require("socket.io");
 const socketAuthMiddleware = require("./socketAuthMiddleware");
 const { MANAGER_ROOM, getOperatorRoomName } = require("./rooms");
 const { subscribeRealtimeEvents, closeRealtimeEventBus } = require("./eventBus");
+const { REALTIME_EVENT_TYPES } = require("./eventTypes");
 
 let io = null;
 let unsubscribe = null;
 
+/** Map<userId, Set<socketId>> — tracks all connected sockets per user */
+const connectedUsers = new Map();
+
 const resolveOperatorIdFromPayload = (payload) =>
   payload?.operatorId || payload?.operator_id || payload?.assignedOperatorId || null;
+
+const getOnlineUserIds = () => [...connectedUsers.keys()];
+
+const broadcastPresence = () => {
+  if (!io) {
+    return;
+  }
+  io.to(MANAGER_ROOM).emit(REALTIME_EVENT_TYPES.USER_PRESENCE_UPDATED, {
+    onlineUserIds: getOnlineUserIds()
+  });
+};
+
+const broadcastUserListUpdated = () => {
+  if (!io) {
+    return;
+  }
+  io.to(MANAGER_ROOM).emit(REALTIME_EVENT_TYPES.USER_LIST_UPDATED, {});
+};
 
 const broadcastRealtimeEvent = (event) => {
   if (!io) {
@@ -46,6 +68,28 @@ const initializeSocketServer = async (httpServer) => {
     if (authContext.operatorId) {
       socket.join(getOperatorRoomName(authContext.operatorId));
     }
+
+    const userId = authContext.tokenPayload?.sub || null;
+    if (userId) {
+      if (!connectedUsers.has(userId)) {
+        connectedUsers.set(userId, new Set());
+      }
+      connectedUsers.get(userId).add(socket.id);
+      broadcastPresence();
+    }
+
+    socket.on("disconnect", () => {
+      if (userId) {
+        const sockets = connectedUsers.get(userId);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            connectedUsers.delete(userId);
+          }
+        }
+        broadcastPresence();
+      }
+    });
   });
 
   unsubscribe = await subscribeRealtimeEvents((event) => {
@@ -67,6 +111,8 @@ const closeSocketServer = async () => {
 
   await closeRealtimeEventBus();
 
+  connectedUsers.clear();
+
   if (io) {
     await new Promise((resolve) => {
       io.close(() => resolve());
@@ -76,6 +122,8 @@ const closeSocketServer = async () => {
 };
 
 module.exports = {
+  broadcastUserListUpdated,
   closeSocketServer,
+  getOnlineUserIds,
   initializeSocketServer
 };

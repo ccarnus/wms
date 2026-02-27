@@ -21,6 +21,7 @@ const USER_SELECT_SQL = `SELECT
   u.role,
   u.operator_id AS "operatorId",
   u.is_active AS "isActive",
+  u.must_change_password AS "mustChangePassword",
   u.last_login_at AS "lastLoginAt",
   u.created_at AS "createdAt",
   u.updated_at AS "updatedAt"
@@ -33,6 +34,7 @@ const USER_PUBLIC_SELECT_SQL = `SELECT
   u.role,
   u.operator_id AS "operatorId",
   u.is_active AS "isActive",
+  u.must_change_password AS "mustChangePassword",
   u.last_login_at AS "lastLoginAt",
   u.created_at AS "createdAt",
   u.updated_at AS "updatedAt"
@@ -111,11 +113,45 @@ const hashPassword = async (plaintext) => {
   return bcrypt.hash(plaintext, BCRYPT_ROUNDS);
 };
 
+const changeOwnPassword = async (userId, currentPassword, newPassword) => {
+  if (!currentPassword || typeof currentPassword !== "string") {
+    throw createHttpError(400, "currentPassword is required");
+  }
+  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+    throw createHttpError(400, "newPassword must be at least 6 characters");
+  }
+
+  const { rows } = await query(
+    `${USER_SELECT_SQL} WHERE u.id = $1`,
+    [userId]
+  );
+
+  const user = rows[0] || null;
+  if (!user) {
+    throw createHttpError(404, "User not found");
+  }
+
+  const passwordMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!passwordMatches) {
+    throw createHttpError(401, "Current password is incorrect");
+  }
+
+  const newHash = await hashPassword(newPassword);
+  await query(
+    `UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2`,
+    [newHash, userId]
+  );
+
+  const updated = await getUserById(userId);
+  return updated;
+};
+
 module.exports = {
   USER_ROLES,
   BCRYPT_ROUNDS,
   JWT_EXPIRY,
   login,
   getUserById,
-  hashPassword
+  hashPassword,
+  changeOwnPassword
 };
