@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import LoginScreen from "./LoginScreen";
 import InventoryDashboard from "./InventoryDashboard";
 import ManagerLaborDashboard from "./ManagerLaborDashboard";
 import OperatorTaskScreen from "./OperatorTaskScreen";
@@ -20,6 +21,17 @@ const VIEWS = [
     subtitle: "Stock and movement health"
   }
 ];
+
+const VIEWS_BY_ROLE = {
+  admin: ["manager", "operator", "inventory"],
+  warehouse_manager: ["manager", "operator", "inventory"],
+  supervisor: ["manager", "operator", "inventory"],
+  operator: ["operator"],
+  viewer: ["manager", "inventory"]
+};
+
+const AUTH_TOKEN_KEY = "wms.auth.token";
+const AUTH_USER_KEY = "wms.auth.user";
 
 const safeStorageGet = (key) => {
   if (typeof window === "undefined") {
@@ -45,37 +57,99 @@ const safeStorageSet = (key, value) => {
   }
 };
 
-const getInitialView = () => {
+const safeStorageRemove = (key) => {
   if (typeof window === "undefined") {
-    return "manager";
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+};
+
+const getStoredAuth = () => {
+  const token = safeStorageGet(AUTH_TOKEN_KEY);
+  if (!token) {
+    return null;
+  }
+  const userJson = safeStorageGet(AUTH_USER_KEY);
+  let user = null;
+  try {
+    user = userJson ? JSON.parse(userJson) : null;
+  } catch (_error) {
+    // Ignore parse errors.
+  }
+  return { token, user };
+};
+
+const getInitialView = (allowedIds) => {
+  if (typeof window === "undefined") {
+    return allowedIds[0] || "manager";
   }
 
   const storedValue = safeStorageGet("wms.frontend.view");
-  if (VIEWS.some((view) => view.id === storedValue)) {
+  if (storedValue && allowedIds.includes(storedValue)) {
     return storedValue;
   }
-  return "manager";
+  return allowedIds[0] || "manager";
 };
 
 function App() {
-  const [view, setView] = useState(getInitialView);
+  const [auth, setAuth] = useState(() => getStoredAuth());
+
+  const visibleViews = useMemo(() => {
+    const allowedIds = VIEWS_BY_ROLE[auth?.user?.role] || VIEWS.map((v) => v.id);
+    return VIEWS.filter((v) => allowedIds.includes(v.id));
+  }, [auth?.user?.role]);
+
+  const visibleViewIds = useMemo(() => visibleViews.map((v) => v.id), [visibleViews]);
+
+  const [view, setView] = useState(() => getInitialView(visibleViewIds));
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!visibleViewIds.includes(view)) {
+      setView(visibleViewIds[0] || "manager");
+    }
+  }, [visibleViewIds, view]);
 
   useEffect(() => {
     safeStorageSet("wms.frontend.view", view);
   }, [view]);
 
-  const activeView = useMemo(() => VIEWS.find((candidate) => candidate.id === view) || VIEWS[0], [view]);
+  const handleLoginSuccess = useCallback(({ token, user }) => {
+    safeStorageSet(AUTH_TOKEN_KEY, token);
+    safeStorageSet(AUTH_USER_KEY, JSON.stringify(user));
+    safeStorageRemove("wms.operator.jwt");
+    safeStorageRemove("wms.operator.id");
+    safeStorageRemove("wms.manager.jwt");
+    setAuth({ token, user });
+  }, []);
 
-  const activeViewComponent = useMemo(() => {
+  const handleLogout = useCallback(() => {
+    safeStorageRemove(AUTH_TOKEN_KEY);
+    safeStorageRemove(AUTH_USER_KEY);
+    setAuth(null);
+  }, []);
+
+  if (!auth?.token) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const activeView =
+    visibleViews.find((candidate) => candidate.id === view) || visibleViews[0];
+
+  const activeViewComponent = (() => {
     if (view === "operator") {
-      return <OperatorTaskScreen />;
+      return <OperatorTaskScreen jwtToken={auth.token} user={auth.user} />;
     }
     if (view === "inventory") {
-      return <InventoryDashboard />;
+      return <InventoryDashboard jwtToken={auth.token} user={auth.user} />;
     }
-    return <ManagerLaborDashboard />;
-  }, [view]);
+    return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} />;
+  })();
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -102,13 +176,20 @@ function App() {
         }`}
       >
         <div className="rounded-xl border border-black/10 bg-canvas p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">WMS Console</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
+            WMS Console
+          </p>
           <h1 className="mt-1 text-lg font-black">Operations Hub</h1>
-          <p className="mt-1 text-xs text-black/60">Select a workspace</p>
+          <p className="mt-1 text-xs text-black/60">
+            Signed in as{" "}
+            <span className="font-semibold">
+              {auth.user?.displayName || auth.user?.username || "User"}
+            </span>
+          </p>
         </div>
 
         <nav className="mt-4 flex flex-1 flex-col gap-2">
-          {VIEWS.map((menuItem) => (
+          {visibleViews.map((menuItem) => (
             <button
               key={menuItem.id}
               type="button"
@@ -128,8 +209,20 @@ function App() {
           ))}
         </nav>
 
-        <footer className="rounded-xl border border-black/10 bg-canvas p-3 text-xs text-black/65">
-          Active: <span className="font-semibold text-black/85">{activeView.label}</span>
+        <footer className="space-y-2">
+          <div className="rounded-xl border border-black/10 bg-canvas p-3 text-xs text-black/65">
+            Active:{" "}
+            <span className="font-semibold text-black/85">
+              {activeView?.label}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-signal transition hover:bg-signal/10"
+            onClick={handleLogout}
+          >
+            Sign Out
+          </button>
         </footer>
       </aside>
 

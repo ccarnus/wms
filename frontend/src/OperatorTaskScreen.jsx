@@ -80,39 +80,8 @@ const deriveDisplayLocation = (taskLine) => {
   return `${fromLocation} -> ${toLocation}`;
 };
 
-const getInitialStoredValue = (key, fallbackValue = "") => {
-  if (typeof window === "undefined") {
-    return fallbackValue;
-  }
-
-  let storedValue = null;
-  try {
-    storedValue = window.localStorage.getItem(key);
-  } catch (_error) {
-    return fallbackValue;
-  }
-
-  if (!storedValue) {
-    return fallbackValue;
-  }
-  return storedValue;
-};
-
-const persistStoredValue = (key, value) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (_error) {
-    // Ignore storage failures.
-  }
-};
-
-function OperatorTaskScreen() {
-  const [operatorId, setOperatorId] = useState(() => getInitialStoredValue("wms.operator.id"));
-  const [jwtToken, setJwtToken] = useState(() => getInitialStoredValue("wms.operator.jwt"));
+function OperatorTaskScreen({ jwtToken, user }) {
+  const operatorId = user?.operatorId || "";
   const [operatorStatus, setOperatorStatus] = useState("unknown");
 
   const [task, setTask] = useState(null);
@@ -125,14 +94,6 @@ function OperatorTaskScreen() {
   const [isCompletePanelOpen, setIsCompletePanelOpen] = useState(false);
   const [confirmedQuantity, setConfirmedQuantity] = useState("");
   const socketRef = useRef(null);
-
-  useEffect(() => {
-    persistStoredValue("wms.operator.id", operatorId);
-  }, [operatorId]);
-
-  useEffect(() => {
-    persistStoredValue("wms.operator.jwt", jwtToken);
-  }, [jwtToken]);
 
   const expectedTaskQuantity = useMemo(() => {
     if (!task || !Array.isArray(task.lines)) {
@@ -384,35 +345,21 @@ function OperatorTaskScreen() {
 
         <section className="rounded-2xl border border-black/10 bg-white p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-black/70">Session</h2>
-          <div className="mt-3 grid gap-3">
-            <label className="text-sm">
-              Operator ID
-              <input
-                className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2 text-sm"
-                value={operatorId}
-                onChange={(event) => setOperatorId(event.target.value.trim())}
-                placeholder="UUID"
-              />
-            </label>
-
-            <label className="text-sm">
-              JWT Token (for WebSocket auth)
-              <textarea
-                className="mt-1 min-h-[72px] w-full rounded-lg border border-black/15 px-3 py-2 text-xs"
-                value={jwtToken}
-                onChange={(event) => setJwtToken(event.target.value.trim())}
-                placeholder="Paste bearer JWT"
-              />
-            </label>
-
-            <button
-              type="button"
-              className="rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm font-semibold"
-              onClick={() => loadCurrentTask()}
-            >
-              Refresh Task
-            </button>
+          <div className="mt-3 grid gap-2 text-sm">
+            <p>
+              Operator: <span className="font-semibold">{user?.displayName || "Unknown"}</span>
+            </p>
+            <p className="text-xs text-black/60">
+              Operator ID: {operatorId || "Not linked to an operator record"}
+            </p>
           </div>
+          <button
+            type="button"
+            className="mt-3 rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm font-semibold"
+            onClick={() => loadCurrentTask()}
+          >
+            Refresh Task
+          </button>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full border border-black/15 bg-black/5 px-2 py-1">

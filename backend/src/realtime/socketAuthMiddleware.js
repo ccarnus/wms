@@ -83,11 +83,14 @@ const socketAuthMiddleware = (socket, next) => {
   }
 
   const roles = normalizeRoles(payload);
-  const isManager = roles.includes("manager") || roles.includes("admin");
+  const isManager =
+    roles.includes("admin") ||
+    roles.includes("warehouse_manager") ||
+    roles.includes("supervisor") ||
+    roles.includes("manager");
   const operatorId =
     (typeof payload.operatorId === "string" && payload.operatorId.trim()) ||
     (typeof payload.operator_id === "string" && payload.operator_id.trim()) ||
-    (typeof payload.sub === "string" && payload.sub.trim()) ||
     null;
 
   if (!isManager && !operatorId) {

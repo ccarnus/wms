@@ -122,11 +122,10 @@ const getHeatCellStyle = (value, maxValue) => {
   };
 };
 
-function ManagerLaborDashboard() {
+function ManagerLaborDashboard({ jwtToken, user }) {
   const [refreshMode, setRefreshMode] = useState(() =>
     getInitialStoredValue("wms.manager.refreshMode", "websocket")
   );
-  const [managerJwtToken, setManagerJwtToken] = useState(() => getInitialStoredValue("wms.manager.jwt"));
   const [socketState, setSocketState] = useState("disconnected");
 
   const [isLoading, setIsLoading] = useState(true);
@@ -147,9 +146,9 @@ function ManagerLaborDashboard() {
 
     try {
       const [overviewResponse, operatorResponse, zoneResponse] = await Promise.all([
-        fetchJson("/api/labor/overview", managerJwtToken),
-        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, managerJwtToken),
-        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, managerJwtToken)
+        fetchJson("/api/labor/overview", jwtToken),
+        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, jwtToken),
+        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, jwtToken)
       ]);
 
       setOverview(overviewResponse || null);
@@ -163,7 +162,7 @@ function ManagerLaborDashboard() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [managerJwtToken]);
+  }, [jwtToken]);
 
   useEffect(() => {
     loadDashboardData();
@@ -172,10 +171,6 @@ function ManagerLaborDashboard() {
   useEffect(() => {
     persistStoredValue("wms.manager.refreshMode", refreshMode);
   }, [refreshMode]);
-
-  useEffect(() => {
-    persistStoredValue("wms.manager.jwt", managerJwtToken);
-  }, [managerJwtToken]);
 
   useEffect(() => {
     if (refreshMode !== "polling") {
@@ -195,14 +190,14 @@ function ManagerLaborDashboard() {
       return () => {};
     }
 
-    if (!managerJwtToken) {
+    if (!jwtToken) {
       setSocketState("missing_token");
       return () => {};
     }
 
     setSocketState("connecting");
     const socket = io(getSocketBaseUrl(), {
-      auth: { token: managerJwtToken }
+      auth: { token: jwtToken }
     });
 
     const refreshFromSocketEvent = () => {
@@ -223,7 +218,7 @@ function ManagerLaborDashboard() {
     return () => {
       socket.disconnect();
     };
-  }, [loadDashboardData, managerJwtToken, refreshMode]);
+  }, [loadDashboardData, jwtToken, refreshMode]);
 
   const kpis = useMemo(() => {
     const activeTasks =
@@ -316,17 +311,7 @@ function ManagerLaborDashboard() {
             </button>
           </div>
 
-          <label className="mt-3 block text-sm">
-            Manager JWT (required for WebSocket)
-            <textarea
-              className="mt-1 min-h-[72px] w-full rounded-lg border border-black/15 px-3 py-2 text-xs"
-              value={managerJwtToken}
-              onChange={(event) => setManagerJwtToken(event.target.value.trim())}
-              placeholder="Paste manager JWT"
-            />
-          </label>
-
-          <p className="mt-2 text-xs text-black/60">Socket status: {socketState}</p>
+          <p className="mt-3 text-xs text-black/60">Socket status: {socketState}</p>
         </section>
 
         {errorMessage && (

@@ -4,11 +4,13 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 
 const healthRoutes = require("./routes/health");
+const authRoutes = require("./routes/auth");
 const wmsRoutes = require("./routes/wms");
 const tasksRoutes = require("./routes/tasks");
 const orderEventsRoutes = require("./routes/orderEvents");
 const operatorsRoutes = require("./routes/operators");
 const laborRoutes = require("./routes/labor");
+const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
 
@@ -24,6 +26,8 @@ app.get("/", (_req, res) => {
     message: "WMS API is running",
     endpoints: [
       "/api/health",
+      "/api/auth/login",
+      "/api/auth/me",
       "/api/warehouses",
       "/api/locations",
       "/api/products",
@@ -47,6 +51,10 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api/health", healthRoutes);
+app.use("/api/auth", authRoutes);
+
+app.use("/api", requireAuth);
+
 app.use("/api", wmsRoutes);
 app.use("/api/order-events", orderEventsRoutes);
 app.use("/api/operators", operatorsRoutes);
