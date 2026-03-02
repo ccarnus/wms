@@ -303,6 +303,8 @@ function UserManagementScreen({ jwtToken, user }) {
   const [resetTarget, setResetTarget] = useState(null);
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
 
+  const callerIsAdmin = user?.role === "admin";
+
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage("");
@@ -396,7 +398,7 @@ function UserManagementScreen({ jwtToken, user }) {
             Create and manage user accounts
           </p>
         </div>
-        {!showCreateForm && (
+        {callerIsAdmin && !showCreateForm && (
           <button
             type="button"
             className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition hover:bg-accent/90"
@@ -407,7 +409,7 @@ function UserManagementScreen({ jwtToken, user }) {
         )}
       </div>
 
-      {showCreateForm && (
+      {callerIsAdmin && showCreateForm && (
         <CreateUserForm
           jwtToken={jwtToken}
           onUserCreated={handleUserCreated}
@@ -510,20 +512,24 @@ function UserManagementScreen({ jwtToken, user }) {
                             >
                               {u.isActive ? "Disable" : "Enable"}
                             </button>
-                            <button
-                              type="button"
-                              className="rounded-lg border border-black/15 px-2 py-1 text-[10px] font-semibold text-ink transition hover:bg-canvas"
-                              onClick={() => setResetTarget(u)}
-                            >
-                              Reset Pwd
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-lg border border-signal/30 px-2 py-1 text-[10px] font-semibold text-signal transition hover:bg-signal/10"
-                              onClick={() => handleDelete(u)}
-                            >
-                              Delete
-                            </button>
+                            {callerIsAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-black/15 px-2 py-1 text-[10px] font-semibold text-ink transition hover:bg-canvas"
+                                  onClick={() => setResetTarget(u)}
+                                >
+                                  Reset Pwd
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-signal/30 px-2 py-1 text-[10px] font-semibold text-signal transition hover:bg-signal/10"
+                                  onClick={() => handleDelete(u)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
                           </>
                         )}
                       </div>

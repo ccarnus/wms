@@ -12,8 +12,10 @@ const { broadcastUserListUpdated } = require("../realtime/socketServer");
 
 const router = express.Router();
 
-router.use(requireRole("admin", "warehouse_manager"));
+// All user routes require at least admin, warehouse_manager, or supervisor
+router.use(requireRole("admin", "warehouse_manager", "supervisor"));
 
+// List & read — admin, warehouse_manager, supervisor
 router.get("/", async (req, res, next) => {
   try {
     const result = await listUsers({
@@ -40,7 +42,8 @@ router.get("/:userId", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+// Create — admin only
+router.post("/", requireRole("admin"), async (req, res, next) => {
   try {
     const user = await createUser({
       username: req.body.username,
@@ -56,13 +59,28 @@ router.post("/", async (req, res, next) => {
   }
 });
 
+// Update (enable/disable, display name, role, operatorId) — admin, warehouse_manager, supervisor
+// Non-admin callers may only toggle isActive
 router.patch("/:userId", async (req, res, next) => {
   try {
+    const callerRole = req.user.role;
+    const { displayName, role, operatorId, isActive } = req.body;
+
+    // Non-admin users can only toggle isActive
+    if (callerRole !== "admin") {
+      const hasDisallowedFields = displayName !== undefined || role !== undefined || operatorId !== undefined;
+      if (hasDisallowedFields) {
+        const error = new Error("Only admins can modify user details. You may only enable or disable users.");
+        error.statusCode = 403;
+        return next(error);
+      }
+    }
+
     const user = await updateUser(req.params.userId, {
-      displayName: req.body.displayName,
-      role: req.body.role,
-      operatorId: req.body.operatorId,
-      isActive: req.body.isActive
+      displayName,
+      role,
+      operatorId,
+      isActive
     });
     broadcastUserListUpdated();
     res.status(200).json(user);
@@ -71,7 +89,8 @@ router.patch("/:userId", async (req, res, next) => {
   }
 });
 
-router.post("/:userId/reset-password", async (req, res, next) => {
+// Reset password — admin only
+router.post("/:userId/reset-password", requireRole("admin"), async (req, res, next) => {
   try {
     const user = await resetUserPassword(req.params.userId, req.body.password);
     broadcastUserListUpdated();
@@ -81,7 +100,8 @@ router.post("/:userId/reset-password", async (req, res, next) => {
   }
 });
 
-router.delete("/:userId", async (req, res, next) => {
+// Delete — admin only
+router.delete("/:userId", requireRole("admin"), async (req, res, next) => {
   try {
     await deleteUser(req.params.userId);
     broadcastUserListUpdated();

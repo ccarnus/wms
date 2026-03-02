@@ -96,7 +96,9 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
       COALESCE(active.active_tasks, 0)::int AS "activeTasks",
       current_task.id AS "currentTaskId",
       current_task.type AS "currentTaskType",
-      current_task.status AS "currentTaskStatus"
+      current_task.status AS "currentTaskStatus",
+      current_task.zone_name AS "currentZoneName",
+      op_zones.zone_names AS "assignedZones"
     FROM operators o
     LEFT JOIN labor_daily_metrics ldm
       ON ldm.operator_id = o.id
@@ -111,8 +113,10 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
       SELECT
         t.id,
         t.type,
-        t.status
+        t.status,
+        z.name AS zone_name
       FROM tasks t
+      JOIN zones z ON z.id = t.zone_id
       WHERE t.assigned_operator_id = o.id
         AND t.status IN ('assigned'::task_status, 'in_progress'::task_status, 'paused'::task_status)
       ORDER BY
@@ -126,7 +130,13 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
         t.created_at ASC
       LIMIT 1
     ) current_task ON true
-    ORDER BY "utilizationPercent" DESC, "tasksCompleted" DESC, o.performance_score DESC, o.name ASC
+    LEFT JOIN LATERAL (
+      SELECT ARRAY_AGG(z.name ORDER BY z.name) AS zone_names
+      FROM operator_zones oz
+      JOIN zones z ON z.id = oz.zone_id
+      WHERE oz.operator_id = o.id
+    ) op_zones ON true
+    ORDER BY "tasksCompleted" DESC, o.performance_score DESC, o.name ASC
     LIMIT $2
     OFFSET $3`,
     [effectiveDate, pagination.limit, pagination.offset]

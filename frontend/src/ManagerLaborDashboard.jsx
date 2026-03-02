@@ -356,6 +356,10 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                   const statusClassName =
                     operatorStatusClassNameMap[operator.status] ||
                     "border-slate-300 bg-slate-100 text-slate-700";
+                  const zoneLabel = operator.currentZoneName
+                    || (Array.isArray(operator.assignedZones) && operator.assignedZones.length > 0
+                      ? operator.assignedZones.join(", ")
+                      : "\u2014");
                   return (
                     <article key={operator.operatorId} className="rounded-xl border border-black/10 p-3">
                       <div className="flex items-center justify-between gap-2">
@@ -372,7 +376,7 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                       </p>
                       <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                         <span>Completed: {operator.tasksCompleted}</span>
-                        <span>Utilization: {Number(operator.utilizationPercent || 0).toFixed(1)}%</span>
+                        <span>Zone: {zoneLabel}</span>
                       </div>
                     </article>
                   );
@@ -385,9 +389,9 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                     <tr>
                       <th className="px-2 py-2">Name</th>
                       <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">Zone</th>
                       <th className="px-2 py-2">Current Task</th>
-                      <th className="px-2 py-2">Tasks Completed Today</th>
-                      <th className="px-2 py-2">Utilization %</th>
+                      <th className="px-2 py-2">Completed Today</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -395,6 +399,8 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                       const statusClassName =
                         operatorStatusClassNameMap[operator.status] ||
                         "border-slate-300 bg-slate-100 text-slate-700";
+                      const activeZone = operator.currentZoneName;
+                      const assignedZones = Array.isArray(operator.assignedZones) ? operator.assignedZones : [];
                       return (
                         <tr key={operator.operatorId} className="border-b border-black/10">
                           <td className="px-2 py-2 font-semibold">{operator.operatorName}</td>
@@ -404,12 +410,22 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                             </span>
                           </td>
                           <td className="px-2 py-2">
+                            {activeZone ? (
+                              <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
+                                {activeZone}
+                              </span>
+                            ) : assignedZones.length > 0 ? (
+                              <span className="text-xs text-black/50">{assignedZones.join(", ")}</span>
+                            ) : (
+                              <span className="text-xs text-black/30">{"\u2014"}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2">
                             {operator.currentTaskType
                               ? `${toTitleCase(operator.currentTaskType)} (${toTitleCase(operator.currentTaskStatus)})`
-                              : "None"}
+                              : "\u2014"}
                           </td>
                           <td className="px-2 py-2">{operator.tasksCompleted}</td>
-                          <td className="px-2 py-2">{Number(operator.utilizationPercent || 0).toFixed(1)}%</td>
                         </tr>
                       );
                     })}
@@ -422,14 +438,14 @@ function ManagerLaborDashboard({ jwtToken, user }) {
 
         <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Zone Workload</h2>
-            <p className="text-xs text-black/60">Heatmap by pending task count</p>
+            <h2 className="text-lg font-black">Zones</h2>
+            <p className="text-xs text-black/60">{zoneRows.length} zones</p>
           </div>
 
           {isLoading ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={`zone-loading-${index}`} className="h-28 animate-pulse rounded-xl bg-canvas" />
+                <div key={`zone-loading-${index}`} className="h-24 animate-pulse rounded-xl bg-canvas" />
               ))}
             </div>
           ) : (
@@ -437,18 +453,37 @@ function ManagerLaborDashboard({ jwtToken, user }) {
               {zoneRows.map((zone) => {
                 const pendingTasks = getPendingZoneTasks(zone);
                 const heatStyle = getHeatCellStyle(pendingTasks, maxZonePendingTasks);
+                const typeBadge = {
+                  pick: "border-blue-200 bg-blue-50 text-blue-700",
+                  bulk: "border-amber-200 bg-amber-50 text-amber-700",
+                  dock: "border-purple-200 bg-purple-50 text-purple-700",
+                  staging: "border-cyan-200 bg-cyan-50 text-cyan-700"
+                }[zone.zoneType] || "border-black/10 bg-canvas text-black/60";
+
                 return (
                   <article
                     key={zone.zoneId}
-                    className="rounded-xl border p-3"
+                    className="flex flex-col justify-between rounded-xl border p-3"
                     style={heatStyle}
-                    title={`Pending: ${pendingTasks}, Total tasks: ${zone.totalTasks}`}
                   >
-                    <p className="truncate text-sm font-semibold">{zone.zoneName}</p>
-                    <p className="text-xs text-black/70">{toTitleCase(zone.zoneType)}</p>
-                    <p className="mt-2 text-xl font-black">{pendingTasks}</p>
-                    <p className="text-[11px] text-black/70">pending tasks</p>
-                    <p className="mt-2 text-[11px] text-black/65">Total: {zone.totalTasks}</p>
+                    <div>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="truncate text-sm font-bold leading-tight">{zone.zoneName}</p>
+                        <span className={`flex-shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${typeBadge}`}>
+                          {zone.zoneType}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-end justify-between">
+                      <div>
+                        <p className="text-2xl font-black leading-none">{pendingTasks}</p>
+                        <p className="mt-0.5 text-[10px] text-black/60">pending</p>
+                      </div>
+                      <div className="text-right text-[10px] text-black/50">
+                        <p>{zone.completedTasks} done</p>
+                        <p>{zone.totalTasks} total</p>
+                      </div>
+                    </div>
                   </article>
                 );
               })}
