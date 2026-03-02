@@ -64,7 +64,7 @@ const createEventKey = (eventType, sourceDocumentId) => {
   if (!safeEventType || !safeSourceDocumentId) {
     throw createHttpError(400, "eventType and sourceDocumentId are required to build eventKey");
   }
-  return `${safeEventType}:${safeSourceDocumentId}:${randomUUID()}`;
+  return `${safeEventType}--${safeSourceDocumentId}--${randomUUID()}`;
 };
 
 const normalizeSalesOrderEvent = (payload) => {
@@ -93,7 +93,7 @@ const normalizeSalesOrderEvent = (payload) => {
     };
   });
 
-  const sourceDocumentId = `SO:${salesOrderId}`;
+  const sourceDocumentId = `SO-${salesOrderId}`;
   const providedEventKey = payload.eventKey ? String(payload.eventKey).trim() : "";
 
   return {
@@ -137,7 +137,7 @@ const normalizePurchaseOrderEvent = (payload) => {
     };
   });
 
-  const sourceDocumentId = `PO:${purchaseOrderId}`;
+  const sourceDocumentId = `PO-${purchaseOrderId}`;
   const providedEventKey = payload.eventKey ? String(payload.eventKey).trim() : "";
 
   return {

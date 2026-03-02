@@ -213,16 +213,16 @@ const seed = async () => {
   // ── Operators ───────────────────────────────────────────────
   await query(`
     INSERT INTO operators (id, name, role, status, shift_start, shift_end, performance_score) VALUES
-      ('a0000000-0000-0000-0000-000000000001', 'Alice Martin',    'picker',    'available', '06:00', '14:00', 92.5),
-      ('a0000000-0000-0000-0000-000000000002', 'Bob Dupont',      'picker',    'available', '06:00', '14:00', 87.0),
-      ('a0000000-0000-0000-0000-000000000003', 'Claire Bernard',  'picker',    'offline',   '14:00', '22:00', 95.2),
-      ('a0000000-0000-0000-0000-000000000004', 'David Leroy',     'forklift',  'available', '06:00', '14:00', 78.3),
-      ('a0000000-0000-0000-0000-000000000005', 'Emma Petit',      'forklift',  'busy',      '06:00', '14:00', 84.1),
-      ('a0000000-0000-0000-0000-000000000006', 'François Moreau', 'picker',    'available', '14:00', '22:00', 90.0),
-      ('a0000000-0000-0000-0000-000000000007', 'Gabrielle Roux',  'picker',    'available', '06:00', '14:00', 88.7),
-      ('a0000000-0000-0000-0000-000000000008', 'Hugo Lambert',    'forklift',  'busy',      '14:00', '22:00', 81.4),
-      ('a0000000-0000-0000-0000-000000000009', 'Isabelle Faure',  'picker',    'available', '22:00', '06:00', 93.8),
-      ('a0000000-0000-0000-0000-000000000010', 'Julien Garnier',  'forklift',  'offline',   '22:00', '06:00', 76.5)
+      ('a0000000-0000-4000-a000-000000000001', 'Alice Martin',    'picker',    'available', '06:00', '14:00', 92.5),
+      ('a0000000-0000-4000-a000-000000000002', 'Bob Dupont',      'picker',    'available', '06:00', '14:00', 87.0),
+      ('a0000000-0000-4000-a000-000000000003', 'Claire Bernard',  'picker',    'offline',   '14:00', '22:00', 95.2),
+      ('a0000000-0000-4000-a000-000000000004', 'David Leroy',     'forklift',  'available', '06:00', '14:00', 78.3),
+      ('a0000000-0000-4000-a000-000000000005', 'Emma Petit',      'forklift',  'busy',      '06:00', '14:00', 84.1),
+      ('a0000000-0000-4000-a000-000000000006', 'François Moreau', 'picker',    'available', '14:00', '22:00', 90.0),
+      ('a0000000-0000-4000-a000-000000000007', 'Gabrielle Roux',  'picker',    'available', '06:00', '14:00', 88.7),
+      ('a0000000-0000-4000-a000-000000000008', 'Hugo Lambert',    'forklift',  'busy',      '14:00', '22:00', 81.4),
+      ('a0000000-0000-4000-a000-000000000009', 'Isabelle Faure',  'picker',    'available', '22:00', '06:00', 93.8),
+      ('a0000000-0000-4000-a000-000000000010', 'Julien Garnier',  'forklift',  'offline',   '22:00', '06:00', 76.5)
     ON CONFLICT (id) DO NOTHING
   `);
   console.log("  ✓ operators");
@@ -230,26 +230,26 @@ const seed = async () => {
   // ── Operator → Zone assignments ─────────────────────────────
   await query(`
     INSERT INTO operator_zones (operator_id, zone_id) VALUES
-      ('a0000000-0000-0000-0000-000000000001', $1),
-      ('a0000000-0000-0000-0000-000000000001', $2),
-      ('a0000000-0000-0000-0000-000000000002', $1),
-      ('a0000000-0000-0000-0000-000000000002', $4),
-      ('a0000000-0000-0000-0000-000000000003', $3),
-      ('a0000000-0000-0000-0000-000000000003', $5),
-      ('a0000000-0000-0000-0000-000000000004', $2),
-      ('a0000000-0000-0000-0000-000000000004', $4),
-      ('a0000000-0000-0000-0000-000000000005', $4),
-      ('a0000000-0000-0000-0000-000000000005', $6),
-      ('a0000000-0000-0000-0000-000000000006', $3),
-      ('a0000000-0000-0000-0000-000000000006', $5),
-      ('a0000000-0000-0000-0000-000000000007', $1),
-      ('a0000000-0000-0000-0000-000000000007', $7),
-      ('a0000000-0000-0000-0000-000000000008', $6),
-      ('a0000000-0000-0000-0000-000000000008', $8),
-      ('a0000000-0000-0000-0000-000000000009', $5),
-      ('a0000000-0000-0000-0000-000000000009', $9),
-      ('a0000000-0000-0000-0000-000000000010', $8),
-      ('a0000000-0000-0000-0000-000000000010', $9)
+      ('a0000000-0000-4000-a000-000000000001', $1),
+      ('a0000000-0000-4000-a000-000000000001', $2),
+      ('a0000000-0000-4000-a000-000000000002', $1),
+      ('a0000000-0000-4000-a000-000000000002', $4),
+      ('a0000000-0000-4000-a000-000000000003', $3),
+      ('a0000000-0000-4000-a000-000000000003', $5),
+      ('a0000000-0000-4000-a000-000000000004', $2),
+      ('a0000000-0000-4000-a000-000000000004', $4),
+      ('a0000000-0000-4000-a000-000000000005', $4),
+      ('a0000000-0000-4000-a000-000000000005', $6),
+      ('a0000000-0000-4000-a000-000000000006', $3),
+      ('a0000000-0000-4000-a000-000000000006', $5),
+      ('a0000000-0000-4000-a000-000000000007', $1),
+      ('a0000000-0000-4000-a000-000000000007', $7),
+      ('a0000000-0000-4000-a000-000000000008', $6),
+      ('a0000000-0000-4000-a000-000000000008', $8),
+      ('a0000000-0000-4000-a000-000000000009', $5),
+      ('a0000000-0000-4000-a000-000000000009', $9),
+      ('a0000000-0000-4000-a000-000000000010', $8),
+      ('a0000000-0000-4000-a000-000000000010', $9)
     ON CONFLICT (operator_id, zone_id) DO NOTHING
   `, [
     zoneId("Paris Pick Zone"),    // $1
@@ -269,10 +269,10 @@ const seed = async () => {
     { username: "manager1",    password: "manager123",  displayName: "Marie Durand",     role: "warehouse_manager", operatorId: null },
     { username: "manager2",    password: "manager123",  displayName: "Pierre Blanc",     role: "warehouse_manager", operatorId: null },
     { username: "supervisor1", password: "super123",    displayName: "Jean Rousseau",    role: "supervisor",        operatorId: null },
-    { username: "operator1",   password: "oper123",     displayName: "Alice Martin",     role: "operator",          operatorId: "a0000000-0000-0000-0000-000000000001" },
-    { username: "operator2",   password: "oper123",     displayName: "Bob Dupont",       role: "operator",          operatorId: "a0000000-0000-0000-0000-000000000002" },
-    { username: "operator3",   password: "oper123",     displayName: "Claire Bernard",   role: "operator",          operatorId: "a0000000-0000-0000-0000-000000000003" },
-    { username: "operator4",   password: "oper123",     displayName: "David Leroy",      role: "operator",          operatorId: "a0000000-0000-0000-0000-000000000004" },
+    { username: "operator1",   password: "oper123",     displayName: "Alice Martin",     role: "operator",          operatorId: "a0000000-0000-4000-a000-000000000001" },
+    { username: "operator2",   password: "oper123",     displayName: "Bob Dupont",       role: "operator",          operatorId: "a0000000-0000-4000-a000-000000000002" },
+    { username: "operator3",   password: "oper123",     displayName: "Claire Bernard",   role: "operator",          operatorId: "a0000000-0000-4000-a000-000000000003" },
+    { username: "operator4",   password: "oper123",     displayName: "David Leroy",      role: "operator",          operatorId: "a0000000-0000-4000-a000-000000000004" },
     { username: "viewer1",     password: "viewer123",   displayName: "Luc Perrin",       role: "viewer",            operatorId: null }
   ];
 
@@ -291,27 +291,27 @@ const seed = async () => {
   // ── Tasks (mix of statuses) ─────────────────────────────────
   const taskRows = [
     // Completed tasks (historical)
-    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-0000-0000-000000000001", doc: "SO-20260201-001", est: 120, actual: 105, daysAgo: 5 },
-    { type: "pick",      priority: 70, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-0000-0000-000000000002", doc: "SO-20260201-002", est: 90,  actual: 88,  daysAgo: 5 },
-    { type: "putaway",   priority: 60, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-0000-0000-000000000004", doc: "PO-20260202-001", est: 150, actual: 140, daysAgo: 4 },
-    { type: "pick",      priority: 85, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-0000-0000-000000000001", doc: "SO-20260205-001", est: 110, actual: 95,  daysAgo: 3 },
-    { type: "putaway",   priority: 55, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-0000-0000-000000000005", doc: "PO-20260207-001", est: 160, actual: 170, daysAgo: 2 },
-    { type: "pick",      priority: 75, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-0000-0000-000000000003", doc: "SO-20260208-001", est: 100, actual: 92,  daysAgo: 2 },
-    { type: "pick",      priority: 80, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-0000-0000-000000000006", doc: "SO-20260209-001", est: 130, actual: 118, daysAgo: 1 },
-    { type: "putaway",   priority: 60, status: "completed",   zone: "Lille Bulk Zone",    operator: "a0000000-0000-0000-0000-000000000007", doc: "PO-20260210-001", est: 140, actual: 135, daysAgo: 1 },
+    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260201-001", est: 120, actual: 105, daysAgo: 5 },
+    { type: "pick",      priority: 70, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000002", doc: "SO-20260201-002", est: 90,  actual: 88,  daysAgo: 5 },
+    { type: "putaway",   priority: 60, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260202-001", est: 150, actual: 140, daysAgo: 4 },
+    { type: "pick",      priority: 85, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260205-001", est: 110, actual: 95,  daysAgo: 3 },
+    { type: "putaway",   priority: 55, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260207-001", est: 160, actual: 170, daysAgo: 2 },
+    { type: "pick",      priority: 75, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260208-001", est: 100, actual: 92,  daysAgo: 2 },
+    { type: "pick",      priority: 80, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260209-001", est: 130, actual: 118, daysAgo: 1 },
+    { type: "putaway",   priority: 60, status: "completed",   zone: "Lille Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "PO-20260210-001", est: 140, actual: 135, daysAgo: 1 },
     // Cancelled
-    { type: "pick",      priority: 75, status: "cancelled",   zone: "Lille Pick Zone",    operator: "a0000000-0000-0000-0000-000000000006", doc: "SO-20260206-001", est: 130, actual: null, daysAgo: 2 },
+    { type: "pick",      priority: 75, status: "cancelled",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260206-001", est: 130, actual: null, daysAgo: 2 },
     // In-progress tasks (active right now)
-    { type: "pick",      priority: 90, status: "in_progress", zone: "Paris Pick Zone",    operator: "a0000000-0000-0000-0000-000000000001", doc: "SO-20260225-001", est: 100, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 85, status: "in_progress", zone: "Lille Pick Zone",    operator: "a0000000-0000-0000-0000-000000000003", doc: "SO-20260225-002", est: 110, actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 65, status: "in_progress", zone: "Paris Bulk Zone",    operator: "a0000000-0000-0000-0000-000000000005", doc: "PO-20260225-001", est: 180, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 90, status: "in_progress", zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260225-001", est: 100, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 85, status: "in_progress", zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260225-002", est: 110, actual: null, daysAgo: 0 },
+    { type: "putaway",   priority: 65, status: "in_progress", zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260225-001", est: 180, actual: null, daysAgo: 0 },
     // Paused task
-    { type: "pick",      priority: 70, status: "paused",      zone: "Lyon Pick Zone",     operator: "a0000000-0000-0000-0000-000000000009", doc: "SO-20260224-001", est: 95,  actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 70, status: "paused",      zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000009", doc: "SO-20260224-001", est: 95,  actual: null, daysAgo: 0 },
     // Assigned tasks (waiting for operators to start)
-    { type: "putaway",   priority: 60, status: "assigned",    zone: "Paris Dock Zone",    operator: "a0000000-0000-0000-0000-000000000004", doc: "PO-20260226-001", est: 180, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 80, status: "assigned",    zone: "Paris Pick Zone",    operator: "a0000000-0000-0000-0000-000000000007", doc: "SO-20260226-001", est: 120, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 70, status: "assigned",    zone: "Lille Pick Zone",    operator: "a0000000-0000-0000-0000-000000000006", doc: "SO-20260226-002", est: 105, actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 55, status: "assigned",    zone: "Lyon Dock Zone",     operator: "a0000000-0000-0000-0000-000000000008", doc: "PO-20260226-002", est: 160, actual: null, daysAgo: 0 },
+    { type: "putaway",   priority: 60, status: "assigned",    zone: "Paris Dock Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260226-001", est: 180, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 80, status: "assigned",    zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "SO-20260226-001", est: 120, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 70, status: "assigned",    zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260226-002", est: 105, actual: null, daysAgo: 0 },
+    { type: "putaway",   priority: 55, status: "assigned",    zone: "Lyon Dock Zone",     operator: "a0000000-0000-4000-a000-000000000008", doc: "PO-20260226-002", est: 160, actual: null, daysAgo: 0 },
     // Created tasks (unassigned, pending)
     { type: "replenish", priority: 50, status: "created",     zone: "Paris Pick Zone",    operator: null,                                   doc: "RPL-20260227-001", est: 200, actual: null, daysAgo: 0 },
     { type: "count",     priority: 30, status: "created",     zone: "Lyon Pick Zone",     operator: null,                                   doc: "CNT-20260227-001", est: 300, actual: null, daysAgo: 0 },
@@ -438,16 +438,16 @@ const seed = async () => {
 
   // ── Labor Daily Metrics (last 7 days for all operators) ─────
   const metricOperators = [
-    { id: "a0000000-0000-0000-0000-000000000001", avgTasks: 12, avgUnits: 85,  avgTime: 98,  avgUtil: 88 },
-    { id: "a0000000-0000-0000-0000-000000000002", avgTasks: 10, avgUnits: 70,  avgTime: 105, avgUtil: 82 },
-    { id: "a0000000-0000-0000-0000-000000000003", avgTasks: 14, avgUnits: 95,  avgTime: 88,  avgUtil: 93 },
-    { id: "a0000000-0000-0000-0000-000000000004", avgTasks: 8,  avgUnits: 40,  avgTime: 145, avgUtil: 72 },
-    { id: "a0000000-0000-0000-0000-000000000005", avgTasks: 9,  avgUnits: 50,  avgTime: 135, avgUtil: 76 },
-    { id: "a0000000-0000-0000-0000-000000000006", avgTasks: 11, avgUnits: 78,  avgTime: 100, avgUtil: 85 },
-    { id: "a0000000-0000-0000-0000-000000000007", avgTasks: 13, avgUnits: 88,  avgTime: 92,  avgUtil: 89 },
-    { id: "a0000000-0000-0000-0000-000000000008", avgTasks: 7,  avgUnits: 35,  avgTime: 150, avgUtil: 68 },
-    { id: "a0000000-0000-0000-0000-000000000009", avgTasks: 15, avgUnits: 100, avgTime: 85,  avgUtil: 94 },
-    { id: "a0000000-0000-0000-0000-000000000010", avgTasks: 6,  avgUnits: 30,  avgTime: 160, avgUtil: 65 }
+    { id: "a0000000-0000-4000-a000-000000000001", avgTasks: 12, avgUnits: 85,  avgTime: 98,  avgUtil: 88 },
+    { id: "a0000000-0000-4000-a000-000000000002", avgTasks: 10, avgUnits: 70,  avgTime: 105, avgUtil: 82 },
+    { id: "a0000000-0000-4000-a000-000000000003", avgTasks: 14, avgUnits: 95,  avgTime: 88,  avgUtil: 93 },
+    { id: "a0000000-0000-4000-a000-000000000004", avgTasks: 8,  avgUnits: 40,  avgTime: 145, avgUtil: 72 },
+    { id: "a0000000-0000-4000-a000-000000000005", avgTasks: 9,  avgUnits: 50,  avgTime: 135, avgUtil: 76 },
+    { id: "a0000000-0000-4000-a000-000000000006", avgTasks: 11, avgUnits: 78,  avgTime: 100, avgUtil: 85 },
+    { id: "a0000000-0000-4000-a000-000000000007", avgTasks: 13, avgUnits: 88,  avgTime: 92,  avgUtil: 89 },
+    { id: "a0000000-0000-4000-a000-000000000008", avgTasks: 7,  avgUnits: 35,  avgTime: 150, avgUtil: 68 },
+    { id: "a0000000-0000-4000-a000-000000000009", avgTasks: 15, avgUnits: 100, avgTime: 85,  avgUtil: 94 },
+    { id: "a0000000-0000-4000-a000-000000000010", avgTasks: 6,  avgUnits: 30,  avgTime: 160, avgUtil: 65 }
   ];
 
   for (const op of metricOperators) {

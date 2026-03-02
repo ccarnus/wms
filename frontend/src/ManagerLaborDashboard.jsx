@@ -13,6 +13,7 @@ const operatorStatusClassNameMap = {
 };
 
 const POLLING_INTERVAL_MS = 10000;
+const PAGE_SIZE = 10;
 
 const getSocketBaseUrl = () => {
   if (!apiBaseUrl) {
@@ -142,6 +143,8 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   const [pendingTasks, setPendingTasks] = useState([]);
   const [assigningTaskId, setAssigningTaskId] = useState(null);
   const [assignError, setAssignError] = useState("");
+  const [operatorPage, setOperatorPage] = useState(1);
+  const [taskPage, setTaskPage] = useState(1);
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
     if (silent) {
@@ -312,6 +315,14 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
     }, 0);
   }, [zoneRows]);
 
+  const operatorTotalPages = Math.max(1, Math.ceil(operatorRows.length / PAGE_SIZE));
+  const safeOperatorPage = Math.min(operatorPage, operatorTotalPages);
+  const paginatedOperators = operatorRows.slice((safeOperatorPage - 1) * PAGE_SIZE, safeOperatorPage * PAGE_SIZE);
+
+  const taskTotalPages = Math.max(1, Math.ceil(pendingTasks.length / PAGE_SIZE));
+  const safeTaskPage = Math.min(taskPage, taskTotalPages);
+  const paginatedTasks = pendingTasks.slice((safeTaskPage - 1) * PAGE_SIZE, safeTaskPage * PAGE_SIZE);
+
   return (
     <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
@@ -398,7 +409,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
           ) : (
             <>
               <div className="space-y-2 md:hidden">
-                {operatorRows.map((operator) => {
+                {paginatedOperators.map((operator) => {
                   const statusClassName =
                     operatorStatusClassNameMap[operator.status] ||
                     "border-slate-300 bg-slate-100 text-slate-700";
@@ -441,7 +452,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {operatorRows.map((operator) => {
+                    {paginatedOperators.map((operator) => {
                       const statusClassName =
                         operatorStatusClassNameMap[operator.status] ||
                         "border-slate-300 bg-slate-100 text-slate-700";
@@ -478,6 +489,35 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                   </tbody>
                 </table>
               </div>
+
+              {operatorTotalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
+                  <p className="text-xs text-black/50">
+                    Showing {(safeOperatorPage - 1) * PAGE_SIZE + 1}–{Math.min(safeOperatorPage * PAGE_SIZE, operatorRows.length)} of {operatorRows.length}
+                  </p>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      disabled={safeOperatorPage <= 1}
+                      onClick={() => setOperatorPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <span className="flex items-center px-2 text-xs text-black/60">
+                      {safeOperatorPage} / {operatorTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      disabled={safeOperatorPage >= operatorTotalPages}
+                      onClick={() => setOperatorPage((p) => Math.min(operatorTotalPages, p + 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>
@@ -505,7 +545,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
           ) : (
             <>
               <div className="space-y-2 md:hidden">
-                {pendingTasks.map((task) => (
+                {paginatedTasks.map((task) => (
                   <article key={task.id} className="rounded-xl border border-black/10 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{toTitleCase(task.type)}</p>
@@ -555,7 +595,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingTasks.map((task) => (
+                    {paginatedTasks.map((task) => (
                       <tr key={task.id} className="border-b border-black/10">
                         <td className="px-2 py-2 font-semibold">{toTitleCase(task.type)}</td>
                         <td className="px-2 py-2">
@@ -593,6 +633,35 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                   </tbody>
                 </table>
               </div>
+
+              {taskTotalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
+                  <p className="text-xs text-black/50">
+                    Showing {(safeTaskPage - 1) * PAGE_SIZE + 1}–{Math.min(safeTaskPage * PAGE_SIZE, pendingTasks.length)} of {pendingTasks.length}
+                  </p>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      disabled={safeTaskPage <= 1}
+                      onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <span className="flex items-center px-2 text-xs text-black/60">
+                      {safeTaskPage} / {taskTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      disabled={safeTaskPage >= taskTotalPages}
+                      onClick={() => setTaskPage((p) => Math.min(taskTotalPages, p + 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>

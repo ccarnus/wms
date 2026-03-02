@@ -32,10 +32,10 @@ test("normalizeTaskGenerationEvent validates and normalizes sales order events",
   });
 
   assert.equal(normalized.type, ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK);
-  assert.equal(normalized.sourceDocumentId, "SO:SO-123");
+  assert.equal(normalized.sourceDocumentId, "SO-SO-123");
   assert.equal(normalized.lines.length, 1);
   assert.equal(normalized.lines[0].pickLocationId, 101);
-  assert.match(normalized.eventKey, /^sales_order_ready_for_pick:SO:SO-123:/);
+  assert.match(normalized.eventKey, /^sales_order_ready_for_pick--SO-SO-123--/);
 });
 
 test("buildSalesOrderPickTaskSpecs groups lines by zone and computes estimation", () => {
@@ -103,7 +103,7 @@ test("buildPurchaseOrderPutawayTaskSpecs groups by destination location zone", (
   assert.equal(taskSpecs.length, 2);
   assert.equal(taskSpecs[0].type, "putaway");
   assert.equal(taskSpecs[0].priority, 55);
-  assert.equal(taskSpecs[0].sourceDocumentId, "PO:PO-456");
+  assert.equal(taskSpecs[0].sourceDocumentId, "PO-PO-456");
   assert.equal(taskSpecs[0].lines[0].toLocationId > 0, true);
 });
 

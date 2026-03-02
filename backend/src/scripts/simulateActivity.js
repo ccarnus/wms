@@ -8,6 +8,7 @@
  *
  * Requires SEED_TEST_DATA=true to run.
  * Connects to the backend API via SIM_API_BASE_URL.
+ * Fetches all product/location/operator IDs from the API at startup.
  */
 
 const SIM_API_BASE_URL = process.env.SIM_API_BASE_URL || "http://backend:3000";
@@ -15,39 +16,13 @@ const SIM_ORDER_INTERVAL_MS = Number(process.env.SIM_ORDER_INTERVAL_MS) || 20000
 const SIM_TASK_INTERVAL_MS = Number(process.env.SIM_TASK_INTERVAL_MS) || 8000;
 const SIM_STATUS_INTERVAL_MS = Number(process.env.SIM_STATUS_INTERVAL_MS) || 30000;
 
-// ── Data pools for generating realistic payloads ──────────────
+// ── Dynamic data pools (populated at startup from API) ────────
 
-const PICK_LOCATIONS = {
-  "Paris Pick Zone":  ["PAR-RACK-A1", "PAR-RACK-A2", "PAR-RACK-A3", "PAR-RACK-B1", "PAR-RACK-B2"],
-  "Lille Pick Zone":  ["LIL-RACK-A1", "LIL-RACK-A2", "LIL-RACK-B1"],
-  "Lyon Pick Zone":   ["LYN-RACK-A1", "LYN-RACK-B1"]
-};
-
-const PUTAWAY_DESTINATIONS = {
-  "Paris":  ["PAR-RACK-A1", "PAR-RACK-A2", "PAR-RACK-B1", "PAR-BULK-01", "PAR-BULK-02"],
-  "Lille":  ["LIL-RACK-A1", "LIL-RACK-A2", "LIL-BULK-01"],
-  "Lyon":   ["LYN-RACK-A1", "LYN-RACK-B1", "LYN-BULK-01"]
-};
-
-const PRODUCT_SKUS = [
-  "SKU-1001", "SKU-1002", "SKU-1003", "SKU-1004", "SKU-1005",
-  "SKU-2001", "SKU-2002", "SKU-2003", "SKU-2004", "SKU-2005",
-  "SKU-2006", "SKU-2007", "SKU-3001", "SKU-3002", "SKU-3003",
-  "SKU-3004", "SKU-3005", "SKU-4001", "SKU-4002"
-];
-
-const OPERATOR_IDS = [
-  "a0000000-0000-0000-0000-000000000001",
-  "a0000000-0000-0000-0000-000000000002",
-  "a0000000-0000-0000-0000-000000000003",
-  "a0000000-0000-0000-0000-000000000004",
-  "a0000000-0000-0000-0000-000000000005",
-  "a0000000-0000-0000-0000-000000000006",
-  "a0000000-0000-0000-0000-000000000007",
-  "a0000000-0000-0000-0000-000000000008",
-  "a0000000-0000-0000-0000-000000000009",
-  "a0000000-0000-0000-0000-000000000010"
-];
+let productIds = [];       // integer IDs from products table
+let locationIds = [];      // integer IDs from locations table
+let pickLocationIds = [];  // location IDs for pick zones (rack locations)
+let putawayLocationIds = [];  // location IDs for putaway destinations
+let operatorIds = [];      // UUID strings from operators table
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -104,6 +79,40 @@ async function authenticate() {
   console.log("[sim] Authenticated successfully.");
 }
 
+async function loadReferenceData() {
+  console.log("[sim] Loading reference data from API...");
+
+  // Fetch products — we need their integer IDs
+  const products = await apiFetch("/api/products");
+  productIds = products.map((p) => p.id);
+  console.log(`[sim]   ✓ ${productIds.length} products loaded`);
+
+  // Fetch locations — we need their integer IDs
+  const locations = await apiFetch("/api/locations");
+  locationIds = locations.map((l) => l.id);
+
+  // Rack locations are good for pick sources
+  pickLocationIds = locations
+    .filter((l) => l.code.includes("RACK"))
+    .map((l) => l.id);
+
+  // Rack + Bulk locations are good putaway destinations
+  putawayLocationIds = locations
+    .filter((l) => l.code.includes("RACK") || l.code.includes("BULK"))
+    .map((l) => l.id);
+
+  console.log(`[sim]   ✓ ${locationIds.length} locations loaded (${pickLocationIds.length} pick, ${putawayLocationIds.length} putaway)`);
+
+  // Fetch operators — we need their UUID IDs
+  const operatorsResult = await apiFetch("/api/operators?limit=200");
+  operatorIds = (operatorsResult.items || []).map((o) => o.id);
+  console.log(`[sim]   ✓ ${operatorIds.length} operators loaded`);
+
+  if (productIds.length === 0 || locationIds.length === 0 || operatorIds.length === 0) {
+    throw new Error("Reference data is incomplete. Make sure seed data has been loaded.");
+  }
+}
+
 // ── Cycle 1: ERP/OMS Order Release ───────────────────────────
 
 function generateOrderId(prefix) {
@@ -115,17 +124,14 @@ function generateOrderId(prefix) {
 
 function buildSalesOrderEvent() {
   const orderId = generateOrderId("SO");
-  const zones = Object.keys(PICK_LOCATIONS);
-  const zone = pick(zones);
-  const locationPool = PICK_LOCATIONS[zone];
   const numLines = randInt(1, 4);
   const lines = [];
 
   for (let i = 0; i < numLines; i++) {
     lines.push({
-      skuId: pick(PRODUCT_SKUS),
+      skuId: pick(productIds),
       quantity: randInt(1, 25),
-      pickLocationId: pick(locationPool)
+      pickLocationId: pick(pickLocationIds)
     });
   }
 
@@ -142,17 +148,14 @@ function buildSalesOrderEvent() {
 
 function buildPurchaseOrderEvent() {
   const orderId = generateOrderId("PO");
-  const warehouseKeys = Object.keys(PUTAWAY_DESTINATIONS);
-  const warehouse = pick(warehouseKeys);
-  const destPool = PUTAWAY_DESTINATIONS[warehouse];
   const numLines = randInt(1, 3);
   const lines = [];
 
   for (let i = 0; i < numLines; i++) {
     lines.push({
-      skuId: pick(PRODUCT_SKUS),
+      skuId: pick(productIds),
       quantity: randInt(5, 30),
-      destinationLocationId: pick(destPool)
+      destinationLocationId: pick(putawayLocationIds)
     });
   }
 
@@ -190,16 +193,12 @@ async function cycleOrderRelease() {
 async function cycleTaskExecution() {
   if (!running) return;
   try {
-    // Find actionable tasks
-    const actionableStatuses = ["assigned", "in_progress", "paused"];
-    const statusParam = actionableStatuses.join(",");
-
     // Fetch tasks in actionable states
     let tasks = [];
-    for (const status of actionableStatuses) {
+    for (const status of ["assigned", "in_progress", "paused"]) {
       const result = await apiFetch(`/api/tasks?status=${status}&page=1&limit=50`);
-      if (result && result.data) {
-        tasks = tasks.concat(result.data);
+      if (result && result.items) {
+        tasks = tasks.concat(result.items);
       }
     }
 
@@ -212,7 +211,6 @@ async function cycleTaskExecution() {
       const operatorId = task.assignedOperatorId || task.assigned_operator_id;
 
       if (task.status === "assigned") {
-        // Start the task
         console.log(`[sim:tasks] Starting task ${taskId.substring(0, 8)}... (v${version})`);
         await apiFetch(`/api/tasks/${taskId}/start`, {
           method: "POST",
@@ -221,7 +219,6 @@ async function cycleTaskExecution() {
         console.log(`[sim:tasks] ✓ Task started`);
 
       } else if (task.status === "in_progress") {
-        // 80% complete, 20% pause
         if (Math.random() < 0.8) {
           console.log(`[sim:tasks] Completing task ${taskId.substring(0, 8)}... (v${version})`);
           await apiFetch(`/api/tasks/${taskId}/complete`, {
@@ -239,7 +236,6 @@ async function cycleTaskExecution() {
         }
 
       } else if (task.status === "paused") {
-        // Resume the task
         console.log(`[sim:tasks] Resuming task ${taskId.substring(0, 8)}... (v${version})`);
         await apiFetch(`/api/tasks/${taskId}/start`, {
           method: "POST",
@@ -262,7 +258,7 @@ async function cycleTaskExecution() {
 async function cycleOperatorStatus() {
   if (!running) return;
   try {
-    const operatorId = pick(OPERATOR_IDS);
+    const operatorId = pick(operatorIds);
 
     // Weighted status transitions: mostly available↔busy, occasional offline
     const rand = Math.random();
@@ -302,12 +298,15 @@ async function main() {
   console.log(`[sim] API: ${SIM_API_BASE_URL}`);
   console.log(`[sim] Intervals — orders: ${SIM_ORDER_INTERVAL_MS}ms, tasks: ${SIM_TASK_INTERVAL_MS}ms, status: ${SIM_STATUS_INTERVAL_MS}ms`);
 
-  // Wait a bit for backend to be fully ready
-  console.log("[sim] Waiting 5s for backend to stabilize...");
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  // Wait for backend to be fully ready (seed data must be loaded)
+  console.log("[sim] Waiting 10s for backend to stabilize and seed data...");
+  await new Promise((resolve) => setTimeout(resolve, 10000));
 
   // Authenticate
   await authenticate();
+
+  // Load reference data (product IDs, location IDs, operator IDs)
+  await loadReferenceData();
 
   // Start all cycles with initial jitter to avoid thundering herd
   setTimeout(cycleOrderRelease, jitter(3000));
@@ -322,7 +321,6 @@ async function main() {
 function shutdown(signal) {
   console.log(`[sim] Received ${signal}, shutting down gracefully...`);
   running = false;
-  // Give in-flight requests a moment to finish
   setTimeout(() => {
     console.log("[sim] Goodbye.");
     process.exit(0);
