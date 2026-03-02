@@ -65,11 +65,14 @@ const getAuthHeaders = (jwtToken) => {
   return headers;
 };
 
-async function fetchJson(path, jwtToken = "") {
+async function fetchJson(path, jwtToken = "", onAuthError = null) {
   const response = await fetch(buildApiUrl(path), {
     headers: getAuthHeaders(jwtToken)
   });
   if (!response.ok) {
+    if (response.status === 401 && onAuthError) {
+      onAuthError();
+    }
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
@@ -122,7 +125,7 @@ const getHeatCellStyle = (value, maxValue) => {
   };
 };
 
-function ManagerLaborDashboard({ jwtToken, user }) {
+function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   const [refreshMode, setRefreshMode] = useState(() =>
     getInitialStoredValue("wms.manager.refreshMode", "websocket")
   );
@@ -136,6 +139,9 @@ function ManagerLaborDashboard({ jwtToken, user }) {
   const [overview, setOverview] = useState(null);
   const [operatorRows, setOperatorRows] = useState([]);
   const [zoneRows, setZoneRows] = useState([]);
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [assigningTaskId, setAssigningTaskId] = useState(null);
+  const [assignError, setAssignError] = useState("");
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
     if (silent) {
@@ -145,15 +151,17 @@ function ManagerLaborDashboard({ jwtToken, user }) {
     }
 
     try {
-      const [overviewResponse, operatorResponse, zoneResponse] = await Promise.all([
-        fetchJson("/api/labor/overview", jwtToken),
-        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, jwtToken),
-        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, jwtToken)
+      const [overviewResponse, operatorResponse, zoneResponse, pendingResponse] = await Promise.all([
+        fetchJson("/api/labor/overview", jwtToken, onAuthError),
+        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
+        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
+        fetchJson(`/api/tasks?${toQueryString({ status: "created", page: 1, limit: 200 })}`, jwtToken, onAuthError)
       ]);
 
       setOverview(overviewResponse || null);
       setOperatorRows(Array.isArray(operatorResponse?.items) ? operatorResponse.items : []);
       setZoneRows(Array.isArray(zoneResponse?.items) ? zoneResponse.items : []);
+      setPendingTasks(Array.isArray(pendingResponse?.items) ? pendingResponse.items : []);
       setLastUpdatedAt(new Date());
       setErrorMessage("");
     } catch (error) {
@@ -162,7 +170,40 @@ function ManagerLaborDashboard({ jwtToken, user }) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [jwtToken]);
+  }, [jwtToken, onAuthError]);
+
+  const zoneNameMap = useMemo(() => {
+    const map = {};
+    for (const zone of zoneRows) {
+      map[zone.zoneId] = zone.zoneName;
+    }
+    return map;
+  }, [zoneRows]);
+
+  const handleAssignTask = useCallback(async (taskId, operatorId) => {
+    setAssigningTaskId(taskId);
+    setAssignError("");
+    try {
+      await fetch(buildApiUrl(`/api/tasks/${taskId}/assign`), {
+        method: "POST",
+        headers: getAuthHeaders(jwtToken),
+        body: JSON.stringify({ operatorId })
+      }).then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 401 && onAuthError) {
+            onAuthError();
+          }
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload.error || `Assignment failed: ${res.status}`);
+        }
+      });
+      await loadDashboardData({ silent: true });
+    } catch (error) {
+      setAssignError(error.message || "Failed to assign task");
+    } finally {
+      setAssigningTaskId(null);
+    }
+  }, [jwtToken, onAuthError, loadDashboardData]);
 
   useEffect(() => {
     loadDashboardData();
@@ -208,7 +249,12 @@ function ManagerLaborDashboard({ jwtToken, user }) {
     socket.on("disconnect", () => setSocketState("disconnected"));
     socket.on("connect_error", (error) => {
       setSocketState("error");
-      setErrorMessage(error.message || "Realtime connection failed");
+      const msg = error.message || "Realtime connection failed";
+      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
+        if (onAuthError) onAuthError();
+        return;
+      }
+      setErrorMessage(msg);
     });
 
     socket.on("TASK_ASSIGNED", refreshFromSocketEvent);
@@ -429,6 +475,121 @@ function ManagerLaborDashboard({ jwtToken, user }) {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-black">Pending Tasks</h2>
+            <p className="text-xs text-black/60">{pendingTasks.length} tasks</p>
+          </div>
+
+          {assignError && (
+            <div className="mb-3 rounded-lg border border-signal/30 bg-signal/10 px-3 py-2 text-xs text-signal">
+              {assignError}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={`pending-loading-${index}`} className="h-12 animate-pulse rounded-xl bg-canvas" />
+              ))}
+            </div>
+          ) : pendingTasks.length === 0 ? (
+            <p className="py-6 text-center text-sm text-black/40">No pending tasks</p>
+          ) : (
+            <>
+              <div className="space-y-2 md:hidden">
+                {pendingTasks.map((task) => (
+                  <article key={task.id} className="rounded-xl border border-black/10 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{toTitleCase(task.type)}</p>
+                      <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-[10px] font-semibold">
+                        P{task.priority}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-black/60">
+                      Zone: {zoneNameMap[task.zoneId] || "\u2014"} &middot; {task.sourceDocumentId}
+                    </p>
+                    <div className="mt-2">
+                      <select
+                        className="w-full rounded-lg border border-black/15 bg-canvas px-2 py-1.5 text-xs"
+                        defaultValue=""
+                        disabled={assigningTaskId === task.id}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAssignTask(task.id, e.target.value);
+                            e.target.value = "";
+                          }
+                        }}
+                      >
+                        <option value="" disabled>
+                          {assigningTaskId === task.id ? "Assigning..." : "Assign to..."}
+                        </option>
+                        {operatorRows.map((op) => (
+                          <option key={op.operatorId} value={op.operatorId}>
+                            {op.operatorName} ({toTitleCase(op.status)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="hidden overflow-auto md:block">
+                <table className="min-w-[700px] w-full text-left text-sm">
+                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
+                    <tr>
+                      <th className="px-2 py-2">Type</th>
+                      <th className="px-2 py-2">Priority</th>
+                      <th className="px-2 py-2">Zone</th>
+                      <th className="px-2 py-2">Source</th>
+                      <th className="px-2 py-2">Est. Time</th>
+                      <th className="px-2 py-2">Assign</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingTasks.map((task) => (
+                      <tr key={task.id} className="border-b border-black/10">
+                        <td className="px-2 py-2 font-semibold">{toTitleCase(task.type)}</td>
+                        <td className="px-2 py-2">
+                          <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">{zoneNameMap[task.zoneId] || "\u2014"}</td>
+                        <td className="px-2 py-2 text-xs text-black/60">{task.sourceDocumentId}</td>
+                        <td className="px-2 py-2 text-xs">{formatSeconds(task.estimatedTimeSeconds)}</td>
+                        <td className="px-2 py-2">
+                          <select
+                            className="rounded-lg border border-black/15 bg-canvas px-2 py-1 text-xs"
+                            defaultValue=""
+                            disabled={assigningTaskId === task.id}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAssignTask(task.id, e.target.value);
+                                e.target.value = "";
+                              }
+                            }}
+                          >
+                            <option value="" disabled>
+                              {assigningTaskId === task.id ? "Assigning..." : "Assign to..."}
+                            </option>
+                            {operatorRows.map((op) => (
+                              <option key={op.operatorId} value={op.operatorId}>
+                                {op.operatorName} ({toTitleCase(op.status)})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

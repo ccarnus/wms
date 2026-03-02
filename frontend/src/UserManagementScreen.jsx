@@ -57,7 +57,7 @@ const formatDate = (isoString) => {
   }
 };
 
-async function apiRequest(path, jwtToken, options = {}) {
+async function apiRequest(path, jwtToken, options = {}, onAuthError = null) {
   const response = await fetch(buildApiUrl(path), {
     headers: {
       "Content-Type": "application/json",
@@ -69,6 +69,9 @@ async function apiRequest(path, jwtToken, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 && onAuthError) {
+      onAuthError();
+    }
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
 
@@ -295,7 +298,7 @@ function ResetPasswordModal({ userName, jwtToken, userId, onDone, onCancel }) {
   );
 }
 
-function UserManagementScreen({ jwtToken, user }) {
+function UserManagementScreen({ jwtToken, user, onAuthError }) {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -310,14 +313,14 @@ function UserManagementScreen({ jwtToken, user }) {
     setErrorMessage("");
 
     try {
-      const data = await apiRequest("/api/users?limit=200", jwtToken);
+      const data = await apiRequest("/api/users?limit=200", jwtToken, {}, onAuthError);
       setUsers(data.items || []);
     } catch (error) {
       setErrorMessage(error.message || "Failed to load users");
     } finally {
       setIsLoading(false);
     }
-  }, [jwtToken]);
+  }, [jwtToken, onAuthError]);
 
   useEffect(() => {
     fetchUsers();
@@ -331,6 +334,13 @@ function UserManagementScreen({ jwtToken, user }) {
 
     const socket = io(getSocketBaseUrl(), {
       auth: { token: jwtToken }
+    });
+
+    socket.on("connect_error", (error) => {
+      const msg = error.message || "";
+      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
+        if (onAuthError) onAuthError();
+      }
     });
 
     socket.on("USER_PRESENCE_UPDATED", (payload) => {
@@ -353,12 +363,12 @@ function UserManagementScreen({ jwtToken, user }) {
         await apiRequest(`/api/users/${targetUser.id}`, jwtToken, {
           method: "PATCH",
           body: JSON.stringify({ isActive: !targetUser.isActive })
-        });
+        }, onAuthError);
       } catch (error) {
         setErrorMessage(error.message || "Failed to update user");
       }
     },
-    [jwtToken]
+    [jwtToken, onAuthError]
   );
 
   const handleDelete = useCallback(
@@ -371,12 +381,12 @@ function UserManagementScreen({ jwtToken, user }) {
       try {
         await apiRequest(`/api/users/${targetUser.id}`, jwtToken, {
           method: "DELETE"
-        });
+        }, onAuthError);
       } catch (error) {
         setErrorMessage(error.message || "Failed to delete user");
       }
     },
-    [jwtToken]
+    [jwtToken, onAuthError]
   );
 
   const handleUserCreated = useCallback(() => {

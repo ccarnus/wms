@@ -350,11 +350,109 @@ const updateTaskStatus = async (taskId, newStatus, options = {}) => {
   }
 };
 
+const manualAssignTask = async (taskId, operatorId) => {
+  assertUuid(taskId, "taskId");
+  assertUuid(operatorId, "operatorId");
+
+  const client = await pool.connect();
+  let inTransaction = false;
+
+  try {
+    await client.query("BEGIN");
+    inTransaction = true;
+
+    const operatorCheck = await client.query("SELECT id, name FROM operators WHERE id = $1", [operatorId]);
+    if (operatorCheck.rowCount === 0) {
+      throw createHttpError(404, "Operator not found");
+    }
+
+    const currentTaskResult = await client.query(`${TASK_SELECT_SQL} WHERE t.id = $1 FOR UPDATE`, [taskId]);
+    if (currentTaskResult.rowCount === 0) {
+      throw createHttpError(404, "Task not found");
+    }
+
+    const currentTask = Task.fromRow(currentTaskResult.rows[0]);
+    if (currentTask.status !== "created") {
+      throw createHttpError(409, `Task cannot be assigned because its status is '${currentTask.status}' (must be 'created')`);
+    }
+
+    const updateResult = await client.query(
+      `UPDATE tasks
+       SET status = 'assigned'::task_status,
+           assigned_operator_id = $2,
+           version = version + 1,
+           updated_at = NOW()
+       WHERE id = $1
+         AND version = $3
+       RETURNING
+         id, type, priority, status, zone_id, assigned_operator_id,
+         source_document_id, estimated_time_seconds, actual_time_seconds,
+         version, started_at, completed_at, created_at, updated_at`,
+      [taskId, operatorId, currentTask.version]
+    );
+
+    if (updateResult.rowCount === 0) {
+      throw createHttpError(409, "Task was modified concurrently. Retry with the latest version");
+    }
+
+    const updatedTask = Task.fromRow(updateResult.rows[0]);
+
+    await client.query(
+      `INSERT INTO task_status_audit_logs (
+        task_id, from_status, to_status, task_version, changed_by_operator_id
+      ) VALUES ($1, 'created'::task_status, 'assigned'::task_status, $2, $3)`,
+      [taskId, updatedTask.version, operatorId]
+    );
+
+    await client.query("COMMIT");
+    inTransaction = false;
+
+    try {
+      await publishRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.TASK_ASSIGNED,
+        payload: {
+          taskId: updatedTask.id,
+          operatorId,
+          zoneId: updatedTask.zoneId,
+          priority: updatedTask.priority,
+          status: updatedTask.status,
+          version: updatedTask.version,
+          assignedAt: updatedTask.updatedAt
+        }
+      });
+      await publishRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.TASK_UPDATED,
+        payload: {
+          taskId: updatedTask.id,
+          status: updatedTask.status,
+          previousStatus: "created",
+          operatorId,
+          zoneId: updatedTask.zoneId,
+          version: updatedTask.version,
+          updatedAt: updatedTask.updatedAt
+        }
+      });
+    } catch (error) {
+      console.error("[realtime] Failed to publish manual assignment event", error);
+    }
+
+    return updatedTask;
+  } catch (error) {
+    if (inTransaction) {
+      await client.query("ROLLBACK");
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   TASK_STATUS_SET,
   getTaskById,
   isValidTaskTransition,
   listTasks,
   listTasksPaginated,
+  manualAssignTask,
   updateTaskStatus
 };

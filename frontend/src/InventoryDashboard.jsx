@@ -39,20 +39,23 @@ const formatDateTime = (value) => {
   return parsedDate.toLocaleString();
 };
 
-async function fetchJson(path, jwtToken = "") {
+async function fetchJson(path, jwtToken = "", onAuthError = null) {
   const headers = { "Content-Type": "application/json" };
   if (jwtToken) {
     headers.Authorization = `Bearer ${jwtToken}`;
   }
   const response = await fetch(buildApiUrl(path), { headers });
   if (!response.ok) {
+    if (response.status === 401 && onAuthError) {
+      onAuthError();
+    }
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
   return response.json();
 }
 
-function InventoryDashboard({ jwtToken, user }) {
+function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -74,10 +77,10 @@ function InventoryDashboard({ jwtToken, user }) {
 
     try {
       const [summaryResponse, inventoryResponse, productsResponse, movementsResponse] = await Promise.all([
-        fetchJson("/api/summary", jwtToken),
-        fetchJson("/api/inventory", jwtToken),
-        fetchJson("/api/products", jwtToken),
-        fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken)
+        fetchJson("/api/summary", jwtToken, onAuthError),
+        fetchJson("/api/inventory", jwtToken, onAuthError),
+        fetchJson("/api/products", jwtToken, onAuthError),
+        fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken, onAuthError)
       ]);
 
       setSummary(summaryResponse || null);
@@ -92,7 +95,7 @@ function InventoryDashboard({ jwtToken, user }) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [jwtToken]);
+  }, [jwtToken, onAuthError]);
 
   useEffect(() => {
     loadDashboardData();

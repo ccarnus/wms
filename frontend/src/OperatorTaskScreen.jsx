@@ -39,12 +39,15 @@ const getAuthHeaders = (jwtToken) => {
   return headers;
 };
 
-async function fetchJson(path, { jwtToken = "", ...options } = {}) {
+async function fetchJson(path, { jwtToken = "", onAuthError = null, ...options } = {}) {
   const response = await fetch(buildApiUrl(path), {
     headers: getAuthHeaders(jwtToken),
     ...options
   });
   if (!response.ok) {
+    if (response.status === 401 && onAuthError) {
+      onAuthError();
+    }
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
@@ -80,7 +83,7 @@ const deriveDisplayLocation = (taskLine) => {
   return `${fromLocation} -> ${toLocation}`;
 };
 
-function OperatorTaskScreen({ jwtToken, user }) {
+function OperatorTaskScreen({ jwtToken, user, onAuthError }) {
   const operatorId = user?.operatorId || "";
   const [operatorStatus, setOperatorStatus] = useState("unknown");
 
@@ -107,9 +110,9 @@ function OperatorTaskScreen({ jwtToken, user }) {
       if (!taskId) {
         return null;
       }
-      return fetchJson(`/api/tasks/${taskId}`, { jwtToken });
+      return fetchJson(`/api/tasks/${taskId}`, { jwtToken, onAuthError });
     },
-    [jwtToken]
+    [jwtToken, onAuthError]
   );
 
   const loadCurrentTask = useCallback(
@@ -132,7 +135,7 @@ function OperatorTaskScreen({ jwtToken, user }) {
             page: 1,
             limit: 1
           });
-          const listPayload = await fetchJson(`/api/tasks?${query}`, { jwtToken });
+          const listPayload = await fetchJson(`/api/tasks?${query}`, { jwtToken, onAuthError });
           const candidateTask = findTaskFromTaskListResponse(listPayload);
           if (candidateTask?.id) {
             const fullTask = await loadTaskById(candidateTask.id);
@@ -152,7 +155,7 @@ function OperatorTaskScreen({ jwtToken, user }) {
         }
       }
     },
-    [jwtToken, loadTaskById, operatorId]
+    [jwtToken, onAuthError, loadTaskById, operatorId]
   );
 
   useEffect(() => {
@@ -187,7 +190,12 @@ function OperatorTaskScreen({ jwtToken, user }) {
 
     socket.on("connect_error", (error) => {
       setSocketState("error");
-      setErrorMessage(error.message || "WebSocket connection failed");
+      const msg = error.message || "WebSocket connection failed";
+      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
+        if (onAuthError) onAuthError();
+        return;
+      }
+      setErrorMessage(msg);
     });
 
     const reloadTaskFromRealtime = () => {
@@ -257,6 +265,7 @@ function OperatorTaskScreen({ jwtToken, user }) {
 
         const updatedTask = await fetchJson(`/api/tasks/${previousTask.id}/${endpoint}`, {
           jwtToken,
+          onAuthError,
           method: "POST",
           body: JSON.stringify(payload)
         });
@@ -286,7 +295,7 @@ function OperatorTaskScreen({ jwtToken, user }) {
         setActionLoading("");
       }
     },
-    [expectedTaskQuantity, jwtToken, loadCurrentTask, operatorId, task]
+    [expectedTaskQuantity, jwtToken, onAuthError, loadCurrentTask, operatorId, task]
   );
 
   const handleStartTask = () =>

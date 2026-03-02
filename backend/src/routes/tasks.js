@@ -1,5 +1,5 @@
 const express = require("express");
-const { getTaskById, listTasksPaginated, updateTaskStatus } = require("../services/taskService");
+const { getTaskById, listTasksPaginated, manualAssignTask, updateTaskStatus } = require("../services/taskService");
 
 const router = express.Router();
 
@@ -69,6 +69,21 @@ router.get("/:taskId", async (req, res, next) => {
       throw error;
     }
     res.json(task);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:taskId/assign", async (req, res, next) => {
+  try {
+    const operatorId = req.body?.operatorId;
+    if (!operatorId || typeof operatorId !== "string") {
+      const error = new Error("operatorId is required");
+      error.statusCode = 400;
+      throw error;
+    }
+    const updatedTask = await manualAssignTask(req.params.taskId, operatorId);
+    res.status(200).json(updatedTask);
   } catch (error) {
     next(error);
   }

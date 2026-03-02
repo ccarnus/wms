@@ -246,6 +246,10 @@ function App() {
     setAuth(null);
   }, []);
 
+  const handleAuthError = useCallback(() => {
+    handleLogout();
+  }, [handleLogout]);
+
   const handlePasswordChanged = useCallback(
     (updatedUser) => {
       const newAuth = { ...auth, user: { ...auth.user, ...updatedUser, mustChangePassword: false } };
@@ -270,21 +274,21 @@ function App() {
 
   const activeViewComponent = (() => {
     if (view === "dashboard") {
-      return <DashboardScreen jwtToken={auth.token} user={auth.user} />;
+      return <DashboardScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     if (view === "operator") {
-      return <OperatorTaskScreen jwtToken={auth.token} user={auth.user} />;
+      return <OperatorTaskScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     if (view === "inventory") {
-      return <InventoryDashboard jwtToken={auth.token} user={auth.user} />;
+      return <InventoryDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     if (view === "users") {
-      return <UserManagementScreen jwtToken={auth.token} user={auth.user} />;
+      return <UserManagementScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     if (view === "integrations") {
-      return <IntegrationsScreen jwtToken={auth.token} user={auth.user} />;
+      return <IntegrationsScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
-    return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} />;
+    return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
   })();
 
   return (
