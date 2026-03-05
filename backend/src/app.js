@@ -11,6 +11,8 @@ const orderEventsRoutes = require("./routes/orderEvents");
 const operatorsRoutes = require("./routes/operators");
 const laborRoutes = require("./routes/labor");
 const usersRoutes = require("./routes/users");
+const integrationsRoutes = require("./routes/integrations");
+const integrationWebhookRoutes = require("./routes/integrationWebhook");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -48,13 +50,17 @@ app.get("/", (_req, res) => {
       "/api/labor/operator-performance",
       "/api/labor/zone-workload",
       "/api/users",
-      "/api/auth/change-password"
+      "/api/auth/change-password",
+      "/api/integrations",
+      "/api/integrations/connector-types",
+      "/api/webhook/inbound/:apiKey"
     ]
   });
 });
 
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/webhook/inbound", integrationWebhookRoutes);
 
 app.use("/api", requireAuth);
 
@@ -64,6 +70,7 @@ app.use("/api/operators", operatorsRoutes);
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/labor", laborRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/integrations", integrationsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

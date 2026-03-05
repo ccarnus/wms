@@ -2,6 +2,7 @@ const { pool, query } = require("../db");
 const { Task, TASK_STATUSES } = require("../models/taskModel");
 const { publishRealtimeEvent } = require("../realtime/eventBus");
 const { REALTIME_EVENT_TYPES } = require("../realtime/eventTypes");
+const { enqueueIntegrationEvent } = require("../queue/integrationQueue");
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TASK_STATUS_SET = new Set(TASK_STATUSES);

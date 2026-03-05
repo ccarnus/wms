@@ -153,6 +153,32 @@ services:
     networks:
       - wms-net
 
+  integration-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "worker:integrations"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-wms}
+      DB_USER: ${POSTGRES_USER:-wms_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-wms_password}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_QUEUE_INTEGRATION: ${REDIS_QUEUE_INTEGRATION:-integration-outbound}
+      INTEGRATION_WORKER_CONCURRENCY: ${INTEGRATION_WORKER_CONCURRENCY:-4}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wms-net
+
   simulator:
     build:
       context: ./backend

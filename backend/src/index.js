@@ -2,6 +2,7 @@ const http = require("node:http");
 const app = require("./app");
 const { pool } = require("./db");
 const { closeTaskGenerationQueue } = require("./queue/taskGenerationQueue");
+const { closeIntegrationQueue } = require("./queue/integrationQueue");
 const { closeSocketServer, initializeSocketServer } = require("./realtime/socketServer");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -22,6 +23,7 @@ const shutdown = async () => {
     }
     await closeSocketServer();
     await closeTaskGenerationQueue();
+    await closeIntegrationQueue();
     await pool.end();
     process.exit(0);
   } catch (error) {
