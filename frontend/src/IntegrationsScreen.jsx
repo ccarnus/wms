@@ -26,44 +26,35 @@ const formatDate = (iso) => {
   }
 };
 
-const DIRECTION_LABELS = { inbound: "Inbound", outbound: "Outbound", bidirectional: "Bidirectional" };
-const DIRECTION_BADGES = {
-  inbound: "border-blue-200 bg-blue-50 text-blue-700",
-  outbound: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  bidirectional: "border-purple-200 bg-purple-50 text-purple-700"
-};
 const STATUS_BADGES = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-700",
   failed: "border-red-200 bg-red-50 text-red-700",
   pending: "border-amber-200 bg-amber-50 text-amber-700"
 };
 
-const OUTBOUND_EVENTS = [
+const ALL_EVENTS = [
   "task.completed", "task.created", "task.assigned", "task.cancelled",
-  "inventory.updated", "order.fulfilled", "operator.status_changed"
-];
-const INBOUND_EVENTS = [
+  "inventory.updated", "order.fulfilled", "operator.status_changed",
   "inbound.order.created", "inbound.order.cancelled", "inbound.product.synced"
 ];
 
-const PROCESS_OPTIONS = [
-  { id: "inbound", label: "Inbound", description: "Receive data from external systems into the WMS" },
-  { id: "outbound", label: "Outbound", description: "Send WMS events to external systems" }
+const WAREHOUSE_PROCESSES = [
+  { id: "receiving", label: "Receiving", description: "Inbound goods, ASN, purchase orders" },
+  { id: "putaway", label: "Putaway", description: "Storage assignment and replenishment" },
+  { id: "picking", label: "Picking", description: "Order picking and wave management" },
+  { id: "shipping", label: "Shipping", description: "Outbound orders, packing, dispatch" },
+  { id: "inventory", label: "Inventory", description: "Stock levels, adjustments, cycle counts" },
+  { id: "returns", label: "Returns", description: "Return processing and restocking" }
 ];
 
-function deriveDirection(processes) {
-  const hasInbound = processes.includes("inbound");
-  const hasOutbound = processes.includes("outbound");
-  if (hasInbound && hasOutbound) return "bidirectional";
-  if (hasInbound) return "inbound";
-  return "outbound";
-}
-
-function deriveProcesses(direction) {
-  if (direction === "bidirectional") return ["inbound", "outbound"];
-  if (direction === "inbound") return ["inbound"];
-  return ["outbound"];
-}
+const PROCESS_BADGES = {
+  receiving: "border-blue-200 bg-blue-50 text-blue-700",
+  putaway: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  picking: "border-amber-200 bg-amber-50 text-amber-700",
+  shipping: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  inventory: "border-purple-200 bg-purple-50 text-purple-700",
+  returns: "border-rose-200 bg-rose-50 text-rose-700"
+};
 
 /* Connector icon SVGs */
 
@@ -116,7 +107,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
 
   const [currentView, setCurrentView] = useState(VIEW_LIST);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ name: "", connectorType: "", processes: ["outbound"], config: {}, subscribedEvents: [], authHeaderName: "X-Webhook-Secret", authHeaderValue: "" });
+  const [formData, setFormData] = useState({ name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [], authHeaderName: "X-Webhook-Secret", authHeaderValue: "" });
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -163,7 +154,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     setFormData({
       name: "",
       connectorType: connectorType,
-      processes: ["outbound"],
+      processes: [],
       config: {},
       subscribedEvents: [],
       authHeaderName: "X-Webhook-Secret",
@@ -178,7 +169,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     setFormData({
       name: integ.name,
       connectorType: integ.connectorType,
-      processes: deriveProcesses(integ.direction),
+      processes: integ.config?.processes || [],
       config: integ.config || {},
       subscribedEvents: integ.subscribedEvents || [],
       authHeaderName: integ.authHeaderName || "X-Webhook-Secret",
@@ -191,12 +182,12 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const handleSave = async () => {
     setIsSaving(true);
     setFormError("");
-    const direction = deriveDirection(formData.processes);
+    const configWithProcesses = { ...formData.config, processes: formData.processes };
     const payload = {
       name: formData.name,
       connectorType: formData.connectorType,
-      direction,
-      config: formData.config,
+      direction: "bidirectional",
+      config: configWithProcesses,
       subscribedEvents: formData.subscribedEvents,
       authHeaderName: formData.authHeaderName,
       authHeaderValue: formData.authHeaderValue
@@ -266,21 +257,13 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const selectedConnector = connectorTypes.find((ct) => ct.type === formData.connectorType);
   const selectedIntegration = integrations.find((i) => i.id === selectedId);
 
-  const hasInbound = formData.processes.includes("inbound");
-  const hasOutbound = formData.processes.includes("outbound");
-  const availableEvents = [
-    ...(hasOutbound ? OUTBOUND_EVENTS : []),
-    ...(hasInbound ? INBOUND_EVENTS : [])
-  ];
-
   const toggleProcess = (processId) => {
     setFormData((prev) => {
-      const current = prev.processes;
-      const updated = current.includes(processId)
-        ? current.filter((p) => p !== processId)
-        : [...current, processId];
-      if (updated.length === 0) return prev;
-      return { ...prev, processes: updated };
+      const current = prev.processes || [];
+      return {
+        ...prev,
+        processes: current.includes(processId) ? current.filter((p) => p !== processId) : [...current, processId]
+      };
     });
   };
 
@@ -295,6 +278,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   };
 
   const integrationsForConnector = (connectorType) => integrations.filter((i) => i.connectorType === connectorType);
+
+  const editingIntegration = editingId ? integrations.find((i) => i.id === editingId) : null;
 
   /* Create / Edit full-page form */
 
@@ -331,22 +316,20 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
             <input type="text" className="mt-2 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="My ERP Integration" />
           </section>
 
+          {/* Warehouse processes */}
           <section className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-bold">Processes</h2>
-            <p className="mt-1 text-xs text-black/50">Select the data flow directions for this integration. You can enable both.</p>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {PROCESS_OPTIONS.map((proc) => {
-                const supported = selectedConnector?.directions?.includes(proc.id) || selectedConnector?.directions?.includes("bidirectional");
-                const isSelected = formData.processes.includes(proc.id);
+            <h2 className="text-sm font-bold">Warehouse Processes</h2>
+            <p className="mt-1 text-xs text-black/50">Select which warehouse processes this integration covers.</p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {WAREHOUSE_PROCESSES.map((proc) => {
+                const isSelected = (formData.processes || []).includes(proc.id);
                 return (
                   <button
                     key={proc.id}
                     type="button"
-                    disabled={!supported}
-                    onClick={() => supported && toggleProcess(proc.id)}
-                    className={"rounded-xl border-2 p-3 text-left transition " +
-                      (isSelected ? "border-accent bg-accent/5" : "border-black/10 hover:border-black/20") +
-                      (!supported ? " opacity-40 cursor-not-allowed" : " cursor-pointer")
+                    onClick={() => toggleProcess(proc.id)}
+                    className={"rounded-xl border-2 p-3 text-left transition cursor-pointer " +
+                      (isSelected ? "border-accent bg-accent/5" : "border-black/10 hover:border-black/20")
                     }
                   >
                     <div className="flex items-center gap-2">
@@ -385,37 +368,64 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
             </section>
           )}
 
+          {/* Authentication - always show both directions */}
           <section className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-bold">Authentication</h2>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold text-black/70">Auth Header Name</label>
-                <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderName} onChange={(e) => setFormData({ ...formData, authHeaderName: e.target.value })} />
+
+            <div className="mt-4">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">WMS &rarr; External</span>
+                <h3 className="text-xs font-semibold text-black/70">How the WMS authenticates to the external system</h3>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-black/70">Auth Header Value (secret)</label>
-                <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderValue} onChange={(e) => setFormData({ ...formData, authHeaderValue: e.target.value })} placeholder="your-webhook-secret" />
+              <p className="mt-1 text-[11px] text-black/40">A secret header sent by the WMS with every outbound call, so the external system can verify the request is legitimate.</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold text-black/70">Header Name</label>
+                  <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderName} onChange={(e) => setFormData({ ...formData, authHeaderName: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-black/70">Header Value (secret)</label>
+                  <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderValue} onChange={(e) => setFormData({ ...formData, authHeaderValue: e.target.value })} placeholder="your-webhook-secret" />
+                </div>
               </div>
+            </div>
+
+            <div className="mt-5 border-t border-black/10 pt-5">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">External &rarr; WMS</span>
+                <h3 className="text-xs font-semibold text-black/70">How the external system authenticates to the WMS</h3>
+              </div>
+              <p className="mt-1 text-[11px] text-black/40">The external system (ERP, OMS, etc.) calls this URL to push events into the WMS. The API key embedded in the URL acts as the credential.</p>
+              {editingIntegration?.inboundApiKey ? (
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
+                  <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
+                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + editingIntegration.inboundApiKey}</code>
+                  <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional headers needed.</p>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-lg border border-black/10 bg-canvas px-3 py-2.5">
+                  <p className="text-xs text-black/50">An inbound API key and webhook URL will be automatically generated when the integration is created.</p>
+                </div>
+              )}
             </div>
           </section>
 
-          {availableEvents.length > 0 && (
-            <section className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold">Subscribed Events</h2>
-              <p className="mt-1 text-xs text-black/50">Select which events this integration should listen to.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {availableEvents.map((evt) => {
-                  const isSelected = (formData.subscribedEvents || []).includes(evt);
-                  return (
-                    <button key={evt} type="button" onClick={() => toggleEvent(evt)}
-                      className={"rounded-lg border px-3 py-1.5 text-xs font-semibold transition " + (isSelected ? "border-accent/30 bg-accent/10 text-accent" : "border-black/15 bg-canvas text-black/60 hover:bg-black/5")}>
-                      {evt}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {/* Subscribed Events */}
+          <section className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-bold">Subscribed Events</h2>
+            <p className="mt-1 text-xs text-black/50">Select which events this integration should listen to.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {ALL_EVENTS.map((evt) => {
+                const isSelected = (formData.subscribedEvents || []).includes(evt);
+                return (
+                  <button key={evt} type="button" onClick={() => toggleEvent(evt)}
+                    className={"rounded-lg border px-3 py-1.5 text-xs font-semibold transition " + (isSelected ? "border-accent/30 bg-accent/10 text-accent" : "border-black/15 bg-canvas text-black/60 hover:bg-black/5")}>
+                    {evt}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
           <div className="flex gap-2">
             <button type="button" className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" disabled={isSaving} onClick={handleSave}>
@@ -434,6 +444,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   /* Detail / Event Log full-page view */
 
   if (currentView === VIEW_DETAIL && selectedIntegration) {
+    const detailProcesses = selectedIntegration.config?.processes || [];
+
     return (
       <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
@@ -452,7 +464,9 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={"rounded-full border px-2.5 py-1 text-[11px] font-semibold " + (DIRECTION_BADGES[selectedIntegration.direction] || "")}>{DIRECTION_LABELS[selectedIntegration.direction] || selectedIntegration.direction}</span>
+                {detailProcesses.map((p) => (
+                  <span key={p} className={"rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize " + (PROCESS_BADGES[p] || "border-black/10 bg-canvas text-black/60")}>{p}</span>
+                ))}
                 <span className={"rounded-full border px-2.5 py-1 text-[11px] font-semibold " + (selectedIntegration.isEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600")}>{selectedIntegration.isEnabled ? "Enabled" : "Disabled"}</span>
               </div>
             </div>
@@ -469,12 +483,32 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
             )}
           </header>
 
-          {["inbound", "bidirectional"].includes(selectedIntegration.direction) && selectedIntegration.inboundApiKey && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-              <span className="font-semibold">Inbound URL:</span>{" "}
-              <code className="rounded bg-blue-100 px-1.5 py-0.5 text-[11px]">{window.location.origin + "/api/webhook/inbound/" + selectedIntegration.inboundApiKey}</code>
+          {/* Authentication credentials */}
+          <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-bold">Authentication Credentials</h2>
+
+            <div className="mt-3">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">WMS &rarr; External</span>
+              </div>
+              <p className="mt-1 text-[11px] text-black/40">The WMS sends <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.authHeaderName || "X-Webhook-Secret"}</code> header with each outbound request.</p>
             </div>
-          )}
+
+            <div className="mt-4 border-t border-black/10 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">External &rarr; WMS</span>
+              </div>
+              {selectedIntegration.inboundApiKey ? (
+                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
+                  <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
+                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + selectedIntegration.inboundApiKey}</code>
+                  <p className="mt-1.5 text-[11px] text-blue-600">Provide this URL to the external system. The API key in the URL authenticates the request.</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-black/40">No inbound API key was generated for this integration.</p>
+              )}
+            </div>
+          </section>
 
           {selectedIntegration.subscribedEvents?.length > 0 && (
             <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
@@ -511,8 +545,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                         <span className="font-semibold">{evt.eventType}</span>
                         <span className="text-black/40">{formatDate(evt.createdAt)}</span>
                       </div>
-                      <span className={"rounded-full border px-1.5 py-0.5 text-[10px] " + (DIRECTION_BADGES[evt.direction] || "")}>{evt.direction}</span>
-                      {evt.responseStatus ? <span className="ml-1 text-black/40">HTTP {evt.responseStatus}</span> : null}
+                      {evt.responseStatus ? <span className="text-black/40">HTTP {evt.responseStatus}</span> : null}
                       {evt.errorMessage && <p className="mt-1 text-signal">{evt.errorMessage}</p>}
                     </div>
                   </div>
@@ -562,13 +595,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                       <p className="mt-0.5 text-[11px] text-black/50 leading-snug">{ct.description}</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {ct.directions.map((d) => (
-                      <span key={d} className={"rounded-full border px-2 py-0.5 text-[10px] font-semibold " + (DIRECTION_BADGES[d] || "")}>{DIRECTION_LABELS[d] || d}</span>
-                    ))}
-                  </div>
                   {count > 0 && (
-                    <p className="mt-2 text-[11px] text-black/50">
+                    <p className="mt-3 text-[11px] text-black/50">
                       {count} integration{count !== 1 ? "s" : ""} configured
                     </p>
                   )}
@@ -616,6 +644,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
             <div className="space-y-2">
               {integrations.map((integ) => {
                 const ConnIcon = CONNECTOR_ICONS[integ.connectorType] || IconConnectorPlaceholder;
+                const processes = integ.config?.processes || [];
                 return (
                   <article key={integ.id} className="rounded-xl border border-black/10 p-3 transition hover:border-accent/20 cursor-pointer" onClick={() => openDetail(integ)}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -629,8 +658,10 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                           <p className="text-[11px] text-black/50">{integ.connectorType} &middot; {formatDate(integ.createdAt)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={"rounded-full border px-2 py-0.5 text-[10px] font-semibold " + (DIRECTION_BADGES[integ.direction] || "")}>{DIRECTION_LABELS[integ.direction] || integ.direction}</span>
+                      <div className="flex items-center gap-1.5">
+                        {processes.map((p) => (
+                          <span key={p} className={"rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize " + (PROCESS_BADGES[p] || "border-black/10 bg-canvas text-black/60")}>{p}</span>
+                        ))}
                         <span className={"rounded-full border px-2 py-0.5 text-[10px] font-semibold " + (integ.isEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600")}>{integ.isEnabled ? "Enabled" : "Disabled"}</span>
                       </div>
                     </div>
