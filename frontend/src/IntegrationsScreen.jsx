@@ -56,6 +56,11 @@ const PROCESS_BADGES = {
   returns: "border-rose-200 bg-rose-50 text-rose-700"
 };
 
+const AUTH_TYPES = [
+  { id: "none", label: "None", description: "No authentication header sent with outbound requests" },
+  { id: "header", label: "Secret Header", description: "A secret value sent as an HTTP header with every outbound request" }
+];
+
 /* Connector icon SVGs */
 
 function IconWebhook({ className }) {
@@ -107,7 +112,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
 
   const [currentView, setCurrentView] = useState(VIEW_LIST);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [], authHeaderName: "X-Webhook-Secret", authHeaderValue: "" });
+  const [formData, setFormData] = useState({ name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [], authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "" });
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -157,6 +162,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       processes: [],
       config: {},
       subscribedEvents: [],
+      authType: "none",
       authHeaderName: "X-Webhook-Secret",
       authHeaderValue: ""
     });
@@ -165,6 +171,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   };
 
   const openEdit = (integ) => {
+    const authType = integ.config?.authType || (integ.authHeaderValue ? "header" : "none");
     setEditingId(integ.id);
     setFormData({
       name: integ.name,
@@ -172,6 +179,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       processes: integ.config?.processes || [],
       config: integ.config || {},
       subscribedEvents: integ.subscribedEvents || [],
+      authType,
       authHeaderName: integ.authHeaderName || "X-Webhook-Secret",
       authHeaderValue: integ.authHeaderValue || ""
     });
@@ -182,15 +190,15 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const handleSave = async () => {
     setIsSaving(true);
     setFormError("");
-    const configWithProcesses = { ...formData.config, processes: formData.processes };
+    const configWithMeta = { ...formData.config, processes: formData.processes, authType: formData.authType };
     const payload = {
       name: formData.name,
       connectorType: formData.connectorType,
       direction: "bidirectional",
-      config: configWithProcesses,
+      config: configWithMeta,
       subscribedEvents: formData.subscribedEvents,
-      authHeaderName: formData.authHeaderName,
-      authHeaderValue: formData.authHeaderValue
+      authHeaderName: formData.authType === "header" ? formData.authHeaderName : "X-Webhook-Secret",
+      authHeaderValue: formData.authType === "header" ? formData.authHeaderValue : ""
     };
     try {
       if (editingId) {
@@ -377,17 +385,42 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">WMS &rarr; External</span>
                 <h3 className="text-xs font-semibold text-black/70">How the WMS authenticates to the external system</h3>
               </div>
-              <p className="mt-1 text-[11px] text-black/40">A secret header sent by the WMS with every outbound call, so the external system can verify the request is legitimate.</p>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold text-black/70">Header Name</label>
-                  <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderName} onChange={(e) => setFormData({ ...formData, authHeaderName: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-black/70">Header Value (secret)</label>
-                  <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderValue} onChange={(e) => setFormData({ ...formData, authHeaderValue: e.target.value })} placeholder="your-webhook-secret" />
-                </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {AUTH_TYPES.map((at) => (
+                  <button
+                    key={at.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, authType: at.id })}
+                    className={"rounded-xl border-2 p-3 text-left transition cursor-pointer " +
+                      (formData.authType === at.id ? "border-accent bg-accent/5" : "border-black/10 hover:border-black/20")
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={"flex h-4 w-4 items-center justify-center rounded-full border-2 " +
+                        (formData.authType === at.id ? "border-accent" : "border-black/20")
+                      }>
+                        {formData.authType === at.id && <div className="h-2 w-2 rounded-full bg-accent" />}
+                      </div>
+                      <span className="text-sm font-semibold">{at.label}</span>
+                    </div>
+                    <p className="mt-1 pl-6 text-[11px] text-black/50">{at.description}</p>
+                  </button>
+                ))}
               </div>
+
+              {formData.authType === "header" && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Header Name</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderName} onChange={(e) => setFormData({ ...formData, authHeaderName: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Header Value (secret)</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.authHeaderValue} onChange={(e) => setFormData({ ...formData, authHeaderValue: e.target.value })} placeholder="your-webhook-secret" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-5 border-t border-black/10 pt-5">
@@ -445,6 +478,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
 
   if (currentView === VIEW_DETAIL && selectedIntegration) {
     const detailProcesses = selectedIntegration.config?.processes || [];
+    const detailAuthType = selectedIntegration.config?.authType || (selectedIntegration.authHeaderValue ? "header" : "none");
 
     return (
       <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
@@ -491,7 +525,11 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">WMS &rarr; External</span>
               </div>
-              <p className="mt-1 text-[11px] text-black/40">The WMS sends <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.authHeaderName || "X-Webhook-Secret"}</code> header with each outbound request.</p>
+              {detailAuthType === "none" ? (
+                <p className="mt-1 text-[11px] text-black/40">No authentication &mdash; outbound requests are sent without credentials.</p>
+              ) : (
+                <p className="mt-1 text-[11px] text-black/40">The WMS sends <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.authHeaderName || "X-Webhook-Secret"}</code> header with each outbound request.</p>
+              )}
             </div>
 
             <div className="mt-4 border-t border-black/10 pt-4">
