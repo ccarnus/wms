@@ -1,4 +1,28 @@
+const jwt = require("jsonwebtoken");
 const { OUTBOUND_EVENTS, INBOUND_EVENTS } = require("../../integrationEvents");
+
+function buildAuthHeaders(integration) {
+  const authType = integration.config?.authType;
+
+  if (authType === "jwt" && integration.authHeaderValue) {
+    const claims = {};
+    if (integration.config.jwtIssuer) claims.iss = integration.config.jwtIssuer;
+    if (integration.config.jwtAudience) claims.aud = integration.config.jwtAudience;
+    const token = jwt.sign(claims, integration.authHeaderValue, { algorithm: "HS256", expiresIn: "5m" });
+    return { Authorization: "Bearer " + token };
+  }
+
+  if (authType === "header" && integration.authHeaderValue) {
+    return { [integration.authHeaderName || "X-Webhook-Secret"]: integration.authHeaderValue };
+  }
+
+  // Legacy: no authType in config — fall back to old behavior
+  if (!authType && integration.authHeaderValue) {
+    return { [integration.authHeaderName || "X-Webhook-Secret"]: integration.authHeaderValue };
+  }
+
+  return {};
+}
 
 const connector = {
   label: "Generic Webhook",
@@ -25,6 +49,9 @@ const connector = {
         }
       }
     }
+    if (config.authType === "jwt" && !config.jwtSecret && direction !== "inbound") {
+      // jwtSecret is stored in authHeaderValue at DB level, validated at save time by frontend
+    }
     return errors;
   },
 
@@ -32,10 +59,7 @@ const connector = {
     const url = integration.config.outboundUrl;
     const timeoutMs = Number(integration.config.timeoutMs) || 5000;
 
-    const headers = { "Content-Type": "application/json" };
-    if (integration.auth_header_value) {
-      headers[integration.auth_header_name || "X-Webhook-Secret"] = integration.auth_header_value;
-    }
+    const headers = { "Content-Type": "application/json", ...buildAuthHeaders(integration) };
 
     const body = JSON.stringify({
       event: eventType,

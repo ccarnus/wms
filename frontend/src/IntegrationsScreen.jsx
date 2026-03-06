@@ -58,7 +58,13 @@ const PROCESS_BADGES = {
 
 const AUTH_TYPES = [
   { id: "none", label: "None", description: "No authentication header sent with outbound requests" },
-  { id: "header", label: "Secret Header", description: "A secret value sent as an HTTP header with every outbound request" }
+  { id: "header", label: "Secret Header", description: "A secret value sent as an HTTP header with every outbound request" },
+  { id: "jwt", label: "JWT (Bearer Token)", description: "A signed JWT token sent as Authorization: Bearer header with every outbound request" }
+];
+
+const INBOUND_AUTH_TYPES = [
+  { id: "apikey", label: "API Key Only", description: "The webhook URL contains a unique API key that authenticates the caller" },
+  { id: "apikey_jwt", label: "API Key + JWT", description: "The URL identifies the integration, plus the caller must send a valid JWT Bearer token" }
 ];
 
 /* Connector icon SVGs */
@@ -104,6 +110,13 @@ const VIEW_CREATE = "create";
 const VIEW_EDIT = "edit";
 const VIEW_DETAIL = "detail";
 
+const EMPTY_FORM = {
+  name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [],
+  authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "",
+  jwtSecret: "", jwtIssuer: "", jwtAudience: "",
+  inboundAuthType: "apikey", inboundJwtSecret: "", inboundJwtIssuer: ""
+};
+
 function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const [integrations, setIntegrations] = useState([]);
   const [connectorTypes, setConnectorTypes] = useState([]);
@@ -112,7 +125,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
 
   const [currentView, setCurrentView] = useState(VIEW_LIST);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [], authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "" });
+  const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -156,16 +169,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
 
   const openCreate = (connectorType) => {
     setEditingId(null);
-    setFormData({
-      name: "",
-      connectorType: connectorType,
-      processes: [],
-      config: {},
-      subscribedEvents: [],
-      authType: "none",
-      authHeaderName: "X-Webhook-Secret",
-      authHeaderValue: ""
-    });
+    setFormData({ ...EMPTY_FORM, connectorType });
     setFormError("");
     setCurrentView(VIEW_CREATE);
   };
@@ -181,7 +185,13 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       subscribedEvents: integ.subscribedEvents || [],
       authType,
       authHeaderName: integ.authHeaderName || "X-Webhook-Secret",
-      authHeaderValue: integ.authHeaderValue || ""
+      authHeaderValue: authType === "header" ? (integ.authHeaderValue || "") : "",
+      jwtSecret: authType === "jwt" ? (integ.authHeaderValue || "") : "",
+      jwtIssuer: integ.config?.jwtIssuer || "",
+      jwtAudience: integ.config?.jwtAudience || "",
+      inboundAuthType: integ.config?.inboundAuthType || "apikey",
+      inboundJwtSecret: integ.config?.inboundJwtSecret || "",
+      inboundJwtIssuer: integ.config?.inboundJwtIssuer || ""
     });
     setFormError("");
     setCurrentView(VIEW_EDIT);
@@ -191,14 +201,32 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     setIsSaving(true);
     setFormError("");
     const configWithMeta = { ...formData.config, processes: formData.processes, authType: formData.authType };
+    if (formData.authType === "jwt") {
+      configWithMeta.jwtIssuer = formData.jwtIssuer;
+      configWithMeta.jwtAudience = formData.jwtAudience;
+    }
+    configWithMeta.inboundAuthType = formData.inboundAuthType;
+    if (formData.inboundAuthType === "apikey_jwt") {
+      configWithMeta.inboundJwtSecret = formData.inboundJwtSecret;
+      configWithMeta.inboundJwtIssuer = formData.inboundJwtIssuer;
+    }
+    let authHeaderName = "X-Webhook-Secret";
+    let authHeaderValue = "";
+    if (formData.authType === "header") {
+      authHeaderName = formData.authHeaderName;
+      authHeaderValue = formData.authHeaderValue;
+    } else if (formData.authType === "jwt") {
+      authHeaderName = "Authorization";
+      authHeaderValue = formData.jwtSecret;
+    }
     const payload = {
       name: formData.name,
       connectorType: formData.connectorType,
       direction: "bidirectional",
       config: configWithMeta,
       subscribedEvents: formData.subscribedEvents,
-      authHeaderName: formData.authType === "header" ? formData.authHeaderName : "X-Webhook-Secret",
-      authHeaderValue: formData.authType === "header" ? formData.authHeaderValue : ""
+      authHeaderName,
+      authHeaderValue
     };
     try {
       if (editingId) {
@@ -380,13 +408,14 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
           <section className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-bold">Authentication</h2>
 
+            {/* Outbound: WMS -> External */}
             <div className="mt-4">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">WMS &rarr; External</span>
                 <h3 className="text-xs font-semibold text-black/70">How the WMS authenticates to the external system</h3>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {AUTH_TYPES.map((at) => (
                   <button
                     key={at.id}
@@ -421,19 +450,84 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                   </div>
                 </div>
               )}
+
+              {formData.authType === "jwt" && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">JWT Signing Secret *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.jwtSecret} onChange={(e) => setFormData({ ...formData, jwtSecret: e.target.value })} placeholder="your-jwt-signing-secret" />
+                    <p className="mt-0.5 text-[11px] text-black/40">HMAC-SHA256 secret used to sign the JWT. Must match the secret configured on the receiving system.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-black/70">Issuer (iss claim)</label>
+                      <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.jwtIssuer} onChange={(e) => setFormData({ ...formData, jwtIssuer: e.target.value })} placeholder="wms" />
+                      <p className="mt-0.5 text-[11px] text-black/40">Optional. Identifies who issued the token.</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-black/70">Audience (aud claim)</label>
+                      <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.jwtAudience} onChange={(e) => setFormData({ ...formData, jwtAudience: e.target.value })} placeholder="https://erp.example.com" />
+                      <p className="mt-0.5 text-[11px] text-black/40">Optional. Intended recipient of the token.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {/* Inbound: External -> WMS */}
             <div className="mt-5 border-t border-black/10 pt-5">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">External &rarr; WMS</span>
                 <h3 className="text-xs font-semibold text-black/70">How the external system authenticates to the WMS</h3>
               </div>
-              <p className="mt-1 text-[11px] text-black/40">The external system (ERP, OMS, etc.) calls this URL to push events into the WMS. The API key embedded in the URL acts as the credential.</p>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {INBOUND_AUTH_TYPES.map((at) => (
+                  <button
+                    key={at.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, inboundAuthType: at.id })}
+                    className={"rounded-xl border-2 p-3 text-left transition cursor-pointer " +
+                      (formData.inboundAuthType === at.id ? "border-blue-400 bg-blue-50/50" : "border-black/10 hover:border-black/20")
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={"flex h-4 w-4 items-center justify-center rounded-full border-2 " +
+                        (formData.inboundAuthType === at.id ? "border-blue-500" : "border-black/20")
+                      }>
+                        {formData.inboundAuthType === at.id && <div className="h-2 w-2 rounded-full bg-blue-500" />}
+                      </div>
+                      <span className="text-sm font-semibold">{at.label}</span>
+                    </div>
+                    <p className="mt-1 pl-6 text-[11px] text-black/50">{at.description}</p>
+                  </button>
+                ))}
+              </div>
+
+              {formData.inboundAuthType === "apikey_jwt" && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">JWT Verification Secret *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundJwtSecret} onChange={(e) => setFormData({ ...formData, inboundJwtSecret: e.target.value })} placeholder="shared-jwt-secret" />
+                    <p className="mt-0.5 text-[11px] text-black/40">HMAC-SHA256 secret the external system uses to sign its JWT. The WMS will verify the token on each inbound request.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Expected Issuer (iss claim)</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundJwtIssuer} onChange={(e) => setFormData({ ...formData, inboundJwtIssuer: e.target.value })} placeholder="erp-system" />
+                    <p className="mt-0.5 text-[11px] text-black/40">Optional. If set, the WMS will reject tokens with a different issuer.</p>
+                  </div>
+                </div>
+              )}
+
               {editingIntegration?.inboundApiKey ? (
                 <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
                   <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + editingIntegration.inboundApiKey}</code>
-                  <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional headers needed.</p>
+                  {formData.inboundAuthType === "apikey_jwt" ? (
+                    <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header.</p>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional headers needed.</p>
+                  )}
                 </div>
               ) : (
                 <div className="mt-3 rounded-lg border border-black/10 bg-canvas px-3 py-2.5">
@@ -479,6 +573,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   if (currentView === VIEW_DETAIL && selectedIntegration) {
     const detailProcesses = selectedIntegration.config?.processes || [];
     const detailAuthType = selectedIntegration.config?.authType || (selectedIntegration.authHeaderValue ? "header" : "none");
+    const detailInboundAuthType = selectedIntegration.config?.inboundAuthType || "apikey";
 
     return (
       <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
@@ -527,6 +622,16 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
               </div>
               {detailAuthType === "none" ? (
                 <p className="mt-1 text-[11px] text-black/40">No authentication &mdash; outbound requests are sent without credentials.</p>
+              ) : detailAuthType === "jwt" ? (
+                <div className="mt-1">
+                  <p className="text-[11px] text-black/40">The WMS signs a short-lived JWT (HS256) and sends it as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code> with each outbound request.</p>
+                  {selectedIntegration.config?.jwtIssuer && (
+                    <p className="mt-1 text-[11px] text-black/40">Issuer: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.jwtIssuer}</code></p>
+                  )}
+                  {selectedIntegration.config?.jwtAudience && (
+                    <p className="mt-0.5 text-[11px] text-black/40">Audience: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.jwtAudience}</code></p>
+                  )}
+                </div>
               ) : (
                 <p className="mt-1 text-[11px] text-black/40">The WMS sends <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.authHeaderName || "X-Webhook-Secret"}</code> header with each outbound request.</p>
               )}
@@ -540,7 +645,16 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
                   <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + selectedIntegration.inboundApiKey}</code>
-                  <p className="mt-1.5 text-[11px] text-blue-600">Provide this URL to the external system. The API key in the URL authenticates the request.</p>
+                  {detailInboundAuthType === "apikey_jwt" ? (
+                    <div className="mt-2">
+                      <p className="text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header signed with the shared secret (HS256).</p>
+                      {selectedIntegration.config?.inboundJwtIssuer && (
+                        <p className="mt-1 text-[11px] text-blue-600">Expected issuer: <code className="rounded bg-blue-100 px-1 py-0.5">{selectedIntegration.config.inboundJwtIssuer}</code></p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-blue-600">Provide this URL to the external system. The API key in the URL authenticates the request.</p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-2 text-xs text-black/40">No inbound API key was generated for this integration.</p>
