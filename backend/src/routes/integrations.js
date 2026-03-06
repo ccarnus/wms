@@ -5,8 +5,11 @@ const {
   testIntegration, getEventLog, logIntegrationEvent
 } = require("../services/integrationService");
 const { getConnector } = require("../integrations");
+const requireRole = require("../middlewares/requireRole");
 
 const router = express.Router();
+
+const adminOnly = requireRole("admin");
 
 router.get("/connector-types", async (_req, res, next) => {
   try {
@@ -34,7 +37,7 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", adminOnly, async (req, res, next) => {
   try {
     const integration = await createIntegration({
       ...req.body,
@@ -46,7 +49,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", adminOnly, async (req, res, next) => {
   try {
     const updated = await updateIntegration(req.params.id, req.body);
     res.json(updated);
@@ -55,7 +58,7 @@ router.put("/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", adminOnly, async (req, res, next) => {
   try {
     await deleteIntegration(req.params.id);
     res.status(204).end();
@@ -64,7 +67,7 @@ router.delete("/:id", async (req, res, next) => {
   }
 });
 
-router.patch("/:id/toggle", async (req, res, next) => {
+router.patch("/:id/toggle", adminOnly, async (req, res, next) => {
   try {
     const updated = await toggleIntegration(req.params.id, req.body.isEnabled);
     res.json(updated);
@@ -73,7 +76,7 @@ router.patch("/:id/toggle", async (req, res, next) => {
   }
 });
 
-router.post("/:id/test", async (req, res, next) => {
+router.post("/:id/test", adminOnly, async (req, res, next) => {
   try {
     const result = await testIntegration(req.params.id);
     res.json(result);
