@@ -63,8 +63,8 @@ const AUTH_TYPES = [
 ];
 
 const INBOUND_AUTH_TYPES = [
-  { id: "apikey", label: "API Key Only", description: "The webhook URL contains a unique API key that authenticates the caller" },
-  { id: "apikey_jwt", label: "API Key + JWT", description: "The URL identifies the integration, plus the caller must send a valid JWT Bearer token" }
+  { id: "none", label: "None", description: "The webhook URL contains a unique API key — no additional authentication required" },
+  { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must also send a valid JWT Bearer token in addition to the API key URL" }
 ];
 
 /* Connector icon SVGs */
@@ -114,7 +114,7 @@ const EMPTY_FORM = {
   name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [],
   authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "",
   jwtSecret: "", jwtIssuer: "", jwtAudience: "",
-  inboundAuthType: "apikey", inboundJwtSecret: "", inboundJwtIssuer: ""
+  inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: ""
 };
 
 function IntegrationsScreen({ jwtToken, user, onAuthError }) {
@@ -189,7 +189,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       jwtSecret: authType === "jwt" ? (integ.authHeaderValue || "") : "",
       jwtIssuer: integ.config?.jwtIssuer || "",
       jwtAudience: integ.config?.jwtAudience || "",
-      inboundAuthType: integ.config?.inboundAuthType || "apikey",
+      inboundAuthType: ({ apikey: "none", apikey_jwt: "jwt" })[integ.config?.inboundAuthType] || integ.config?.inboundAuthType || "none",
       inboundJwtSecret: integ.config?.inboundJwtSecret || "",
       inboundJwtIssuer: integ.config?.inboundJwtIssuer || ""
     });
@@ -206,7 +206,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       configWithMeta.jwtAudience = formData.jwtAudience;
     }
     configWithMeta.inboundAuthType = formData.inboundAuthType;
-    if (formData.inboundAuthType === "apikey_jwt") {
+    if (formData.inboundAuthType === "jwt") {
       configWithMeta.inboundJwtSecret = formData.inboundJwtSecret;
       configWithMeta.inboundJwtIssuer = formData.inboundJwtIssuer;
     }
@@ -573,7 +573,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   if (currentView === VIEW_DETAIL && selectedIntegration) {
     const detailProcesses = selectedIntegration.config?.processes || [];
     const detailAuthType = selectedIntegration.config?.authType || (selectedIntegration.authHeaderValue ? "header" : "none");
-    const detailInboundAuthType = selectedIntegration.config?.inboundAuthType || "apikey";
+    const detailInboundAuthType = ({ apikey: "none", apikey_jwt: "jwt" })[selectedIntegration.config?.inboundAuthType] || selectedIntegration.config?.inboundAuthType || "none";
 
     return (
       <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
@@ -645,7 +645,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
                   <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + selectedIntegration.inboundApiKey}</code>
-                  {detailInboundAuthType === "apikey_jwt" ? (
+                  {detailInboundAuthType === "jwt" ? (
                     <div className="mt-2">
                       <p className="text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header signed with the shared secret (HS256).</p>
                       {selectedIntegration.config?.inboundJwtIssuer && (

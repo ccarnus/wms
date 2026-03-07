@@ -8,7 +8,7 @@ function buildAuthHeaders(integration) {
     const claims = {};
     if (integration.config.jwtIssuer) claims.iss = integration.config.jwtIssuer;
     if (integration.config.jwtAudience) claims.aud = integration.config.jwtAudience;
-    const token = jwt.sign(claims, integration.authHeaderValue, { algorithm: "HS256", expiresIn: "5m" });
+    const token = jwt.sign(claims, integration.authHeaderValue, { algorithm: "HS256", expiresIn: "12h" });
     return { Authorization: "Bearer " + token };
   }
 
@@ -48,9 +48,6 @@ const connector = {
           errors.push("outboundUrl is not a valid URL");
         }
       }
-    }
-    if (config.authType === "jwt" && !config.jwtSecret && direction !== "inbound") {
-      // jwtSecret is stored in authHeaderValue at DB level, validated at save time by frontend
     }
     return errors;
   },

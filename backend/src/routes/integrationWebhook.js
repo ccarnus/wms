@@ -7,7 +7,9 @@ const router = express.Router();
 
 function verifyInboundJwt(req, integration) {
   const config = integration.config || {};
-  if (config.inboundAuthType !== "apikey_jwt") return null;
+  const inboundAuth = config.inboundAuthType;
+  // Only verify JWT if explicitly set to "jwt" (or legacy "apikey_jwt")
+  if (inboundAuth !== "jwt" && inboundAuth !== "apikey_jwt") return null;
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
