@@ -63,8 +63,9 @@ const AUTH_TYPES = [
 ];
 
 const INBOUND_AUTH_TYPES = [
-  { id: "none", label: "None", description: "The webhook URL contains a unique API key — no additional authentication required" },
-  { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must also send a valid JWT Bearer token in addition to the API key URL" }
+  { id: "none", label: "None", description: "No additional authentication — the webhook URL is the only protection" },
+  { id: "credentials", label: "Credentials (API Key)", description: "The caller must send an X-API-Key header with a shared secret" },
+  { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must send a valid JWT Bearer token signed with a shared secret (HS256)" }
 ];
 
 /* Connector icon SVGs */
@@ -114,7 +115,7 @@ const EMPTY_FORM = {
   name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [],
   authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "",
   jwtSecret: "", jwtIssuer: "", jwtAudience: "",
-  inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: ""
+  inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: "", inboundCredentialSecret: ""
 };
 
 function IntegrationsScreen({ jwtToken, user, onAuthError }) {
@@ -191,7 +192,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       jwtAudience: integ.config?.jwtAudience || "",
       inboundAuthType: ({ apikey: "none", apikey_jwt: "jwt" })[integ.config?.inboundAuthType] || integ.config?.inboundAuthType || "none",
       inboundJwtSecret: integ.config?.inboundJwtSecret || "",
-      inboundJwtIssuer: integ.config?.inboundJwtIssuer || ""
+      inboundJwtIssuer: integ.config?.inboundJwtIssuer || "",
+      inboundCredentialSecret: integ.config?.inboundCredentialSecret || ""
     });
     setFormError("");
     setCurrentView(VIEW_EDIT);
@@ -504,7 +506,17 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 ))}
               </div>
 
-              {formData.inboundAuthType === "apikey_jwt" && (
+              {formData.inboundAuthType === "credentials" && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">API Key Secret *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundCredentialSecret} onChange={(e) => setFormData({ ...formData, inboundCredentialSecret: e.target.value })} placeholder="your-api-key-secret" />
+                    <p className="mt-0.5 text-[11px] text-black/40">The external system must send this value in an <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">X-API-Key</code> header with every inbound request.</p>
+                  </div>
+                </div>
+              )}
+
+              {formData.inboundAuthType === "jwt" && (
                 <div className="mt-3 space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-black/70">JWT Verification Secret *</label>
@@ -519,21 +531,19 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 </div>
               )}
 
-              {editingIntegration?.inboundApiKey ? (
+              {formData.connectorType ? (
                 <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
-                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + editingIntegration.inboundApiKey}</code>
-                  {formData.inboundAuthType === "apikey_jwt" ? (
+                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/" + formData.connectorType}</code>
+                  {formData.inboundAuthType === "jwt" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header.</p>
+                  ) : formData.inboundAuthType === "credentials" ? (
+                    <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key: &lt;secret&gt;</code> header.</p>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional headers needed.</p>
                   )}
                 </div>
-              ) : (
-                <div className="mt-3 rounded-lg border border-black/10 bg-canvas px-3 py-2.5">
-                  <p className="text-xs text-black/50">An inbound API key and webhook URL will be automatically generated when the integration is created.</p>
-                </div>
-              )}
+              ) : null}
             </div>
           </section>
 
@@ -641,10 +651,10 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">External &rarr; WMS</span>
               </div>
-              {selectedIntegration.inboundApiKey ? (
+              {selectedIntegration.connectorType ? (
                 <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
-                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/inbound/" + selectedIntegration.inboundApiKey}</code>
+                  <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/" + selectedIntegration.connectorType}</code>
                   {detailInboundAuthType === "jwt" ? (
                     <div className="mt-2">
                       <p className="text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header signed with the shared secret (HS256).</p>
@@ -652,13 +662,13 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                         <p className="mt-1 text-[11px] text-blue-600">Expected issuer: <code className="rounded bg-blue-100 px-1 py-0.5">{selectedIntegration.config.inboundJwtIssuer}</code></p>
                       )}
                     </div>
+                  ) : detailInboundAuthType === "credentials" ? (
+                    <p className="mt-1.5 text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key</code> header with each request.</p>
                   ) : (
-                    <p className="mt-1.5 text-[11px] text-blue-600">Provide this URL to the external system. The API key in the URL authenticates the request.</p>
+                    <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional authentication needed.</p>
                   )}
                 </div>
-              ) : (
-                <p className="mt-2 text-xs text-black/40">No inbound API key was generated for this integration.</p>
-              )}
+              ) : null}
             </div>
           </section>
 
@@ -753,13 +763,23 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                     </p>
                   )}
                   <div className="mt-auto pt-3">
-                    <button
-                      type="button"
-                      onClick={() => openCreate(ct.type)}
-                      className="w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:bg-accent/90 transition"
-                    >
-                      + Add Integration
-                    </button>
+                    {count > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openDetail(existing[0])}
+                        className="w-full rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/20 transition"
+                      >
+                        View Integration
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openCreate(ct.type)}
+                        className="w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:bg-accent/90 transition"
+                      >
+                        + Add Integration
+                      </button>
+                    )}
                   </div>
                 </article>
               );

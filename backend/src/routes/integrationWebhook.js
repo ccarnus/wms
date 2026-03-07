@@ -1,45 +1,61 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const { getIntegrationByInboundKey, logIntegrationEvent } = require("../services/integrationService");
+const { getIntegrationByConnectorType, logIntegrationEvent } = require("../services/integrationService");
 const { getConnector } = require("../integrations");
 
 const router = express.Router();
 
-function verifyInboundJwt(req, integration) {
+function verifyInboundAuth(req, integration) {
   const config = integration.config || {};
   const inboundAuth = config.inboundAuthType;
-  // Only verify JWT if explicitly set to "jwt" (or legacy "apikey_jwt")
-  if (inboundAuth !== "jwt" && inboundAuth !== "apikey_jwt") return null;
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return "Missing or invalid Authorization header — expected Bearer <jwt>";
-  }
+  // "none" or missing — no additional auth required (URL API key is enough for routing)
+  if (!inboundAuth || inboundAuth === "none" || inboundAuth === "apikey") return null;
 
-  const token = authHeader.slice(7);
-  const secret = config.inboundJwtSecret;
-  if (!secret) {
-    return "Integration misconfigured — no inbound JWT secret set";
-  }
-
-  try {
-    const verifyOptions = { algorithms: ["HS256"] };
-    if (config.inboundJwtIssuer) {
-      verifyOptions.issuer = config.inboundJwtIssuer;
-    }
-    jwt.verify(token, secret, verifyOptions);
+  // "credentials" — verify X-API-Key header matches the stored secret
+  if (inboundAuth === "credentials") {
+    const secret = config.inboundCredentialSecret;
+    if (!secret) return "Integration misconfigured — no inbound credential secret set";
+    const apiKeyHeader = req.headers["x-api-key"];
+    if (!apiKeyHeader) return "Missing X-API-Key header";
+    if (apiKeyHeader !== secret) return "Invalid API key";
     return null;
-  } catch (err) {
-    if (err.name === "TokenExpiredError") return "JWT has expired";
-    if (err.name === "JsonWebTokenError") return "Invalid JWT: " + err.message;
-    return "JWT verification failed";
   }
+
+  // "jwt" (or legacy "apikey_jwt") — verify Bearer JWT
+  if (inboundAuth === "jwt" || inboundAuth === "apikey_jwt") {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return "Missing or invalid Authorization header — expected Bearer <jwt>";
+    }
+
+    const token = authHeader.slice(7);
+    const secret = config.inboundJwtSecret;
+    if (!secret) {
+      return "Integration misconfigured — no inbound JWT secret set";
+    }
+
+    try {
+      const verifyOptions = { algorithms: ["HS256"] };
+      if (config.inboundJwtIssuer) {
+        verifyOptions.issuer = config.inboundJwtIssuer;
+      }
+      jwt.verify(token, secret, verifyOptions);
+      return null;
+    } catch (err) {
+      if (err.name === "TokenExpiredError") return "JWT has expired";
+      if (err.name === "JsonWebTokenError") return "Invalid JWT: " + err.message;
+      return "JWT verification failed";
+    }
+  }
+
+  return null;
 }
 
-// Public inbound webhook — authenticated via API key in the URL, optionally also JWT
-router.post("/:apiKey", async (req, res, next) => {
+// Public inbound webhook — routed by connector type, auth depends on inboundAuthType
+router.post("/:connectorType", async (req, res, next) => {
   try {
-    const integration = await getIntegrationByInboundKey(req.params.apiKey);
+    const integration = await getIntegrationByConnectorType(req.params.connectorType);
     if (!integration) {
       return res.status(404).json({ error: "Integration not found or disabled" });
     }
@@ -47,18 +63,18 @@ router.post("/:apiKey", async (req, res, next) => {
       return res.status(400).json({ error: "Integration does not accept inbound events" });
     }
 
-    const jwtError = verifyInboundJwt(req, integration);
-    if (jwtError) {
+    const authError = verifyInboundAuth(req, integration);
+    if (authError) {
       await logIntegrationEvent({
         integrationId: integration.id,
         direction: "inbound",
         eventType: "auth.failed",
         payload: {},
         status: "failed",
-        errorMessage: jwtError,
+        errorMessage: authError,
         attempts: 1
       });
-      return res.status(401).json({ error: jwtError });
+      return res.status(401).json({ error: authError });
     }
 
     const connector = getConnector(integration.connectorType);

@@ -46,11 +46,27 @@ const getIntegrationByInboundKey = async (apiKey) => {
   return formatIntegration(result.rows[0]);
 };
 
+const getIntegrationByConnectorType = async (connectorType) => {
+  const result = await query(`
+    SELECT id, name, connector_type, direction, is_enabled, config,
+           subscribed_events, auth_header_name, auth_header_value, inbound_api_key,
+           created_at, updated_at
+    FROM integrations WHERE connector_type = $1 AND is_enabled = true
+  `, [connectorType]);
+  if (result.rows.length === 0) return null;
+  return formatIntegration(result.rows[0]);
+};
+
 const createIntegration = async ({ name, connectorType, direction, config, subscribedEvents, authHeaderName, authHeaderValue, createdBy }) => {
   if (!name || typeof name !== "string") throw createHttpError(400, "name is required");
   if (!connectorType) throw createHttpError(400, "connectorType is required");
 
   const connector = getConnector(connectorType);
+
+  // Enforce one integration per connector type
+  const existing = await query("SELECT id FROM integrations WHERE connector_type = $1", [connectorType]);
+  if (existing.rows.length > 0) throw createHttpError(409, "An integration already exists for connector type '" + connectorType + "'. Only one integration per connector is allowed.");
+
   const dir = direction || "outbound";
   if (!VALID_DIRECTIONS.has(dir)) throw createHttpError(400, "direction must be inbound, outbound, or bidirectional");
   if (!connector.directions.includes(dir)) throw createHttpError(400, "Connector does not support direction " + dir);
@@ -202,6 +218,7 @@ module.exports = {
   listIntegrations,
   getIntegrationById,
   getIntegrationByInboundKey,
+  getIntegrationByConnectorType,
   createIntegration,
   updateIntegration,
   deleteIntegration,

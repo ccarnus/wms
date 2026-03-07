@@ -53,14 +53,14 @@ app.get("/", (_req, res) => {
       "/api/auth/change-password",
       "/api/integrations",
       "/api/integrations/connector-types",
-      "/api/webhook/inbound/:apiKey"
+      "/api/webhook/:connectorType"
     ]
   });
 });
 
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/webhook/inbound", integrationWebhookRoutes);
+app.use("/api/webhook", integrationWebhookRoutes);
 
 app.use("/api", requireAuth);
 
