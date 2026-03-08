@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FlowWMS - Modern Warehouse Management System",
+  title: "Greenlights - Modern Warehouse Management System",
   description:
     "Real-time task orchestration, intelligent operator assignment, live inventory tracking, and seamless third-party integrations. Built for modern warehouse operations.",
 };

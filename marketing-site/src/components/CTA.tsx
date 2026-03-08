@@ -7,7 +7,7 @@ export function CTA() {
             Ready to modernize your warehouse?
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-lg text-gray-400">
-            See FlowWMS in action with a personalized demo tailored to your
+            See Greenlights in action with a personalized demo tailored to your
             operation. Our team will walk you through task orchestration,
             real-time tracking, and integration setup.
           </p>

@@ -4,8 +4,9 @@ import { useState } from "react";
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
+  { label: "Integrations", href: "#connectors" },
   { label: "Architecture", href: "#architecture" },
-  { label: "Benefits", href: "#benefits" },
+  { label: "Pricing", href: "#pricing" },
 ];
 
 export function Navbar() {
@@ -15,26 +16,12 @@ export function Navbar() {
     <header className="fixed inset-x-0 top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-lg">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <a href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4.5 w-4.5"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" />
-              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-              <path d="M12 12v4" />
-              <path d="M8 12v4" />
-              <path d="M16 12v4" />
-            </svg>
-          </div>
-          <span className="text-lg font-bold tracking-tight text-gray-900">
-            Flow<span className="text-brand-600">WMS</span>
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/Logo.png"
+            alt="Greenlights"
+            className="h-8 w-auto"
+          />
         </a>
 
         <div className="hidden items-center gap-8 md:flex">

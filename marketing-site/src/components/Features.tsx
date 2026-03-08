@@ -120,9 +120,40 @@ export function Features() {
             Everything you need to run a modern warehouse
           </h2>
           <p className="mt-4 text-lg text-gray-600">
-            Built from the ground up for high-throughput fulfillment operations
-            with real-time visibility at every level.
+            Built for growing businesses that need simple, reliable warehouse
+            visibility without enterprise complexity.
           </p>
+        </div>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="overflow-hidden rounded-xl">
+            <img
+              src="https://images.unsplash.com/photo-1556740772-1a741367b93e?w=600&q=80&auto=format&fit=crop"
+              alt="Small fulfillment workspace with parcels ready to ship"
+              className="h-48 w-full object-cover"
+              width={600}
+              height={192}
+            />
+          </div>
+          <div className="overflow-hidden rounded-xl">
+            <img
+              src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600&q=80&auto=format&fit=crop"
+              alt="Neatly organized shelves in a small stockroom"
+              className="h-48 w-full object-cover"
+              width={600}
+              height={192}
+            />
+          </div>
+          <div className="overflow-hidden rounded-xl">
+            <img
+              src="https://images.unsplash.com/photo-1542744094-3a31f272c490?w=600&q=80&auto=format&fit=crop"
+              alt="Small team coordinating daily warehouse operations"
+              className="h-48 w-full object-cover"
+              width={600}
+              height={192}
+            />
+          </div>
         </div>
 
         <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
