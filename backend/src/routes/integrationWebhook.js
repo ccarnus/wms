@@ -22,6 +22,30 @@ function verifyInboundAuth(req, integration) {
     return null;
   }
 
+  // "basic" — verify Authorization: Basic header
+  if (inboundAuth === "basic") {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Basic ")) {
+      return "Missing or invalid Authorization header — expected Basic <base64>";
+    }
+    const encoded = authHeader.slice(6);
+    let decoded;
+    try {
+      decoded = Buffer.from(encoded, "base64").toString("utf8");
+    } catch (_e) {
+      return "Invalid Base64 encoding in Authorization header";
+    }
+    const colonIndex = decoded.indexOf(":");
+    if (colonIndex === -1) return "Invalid Basic auth format — expected username:password";
+    const username = decoded.slice(0, colonIndex);
+    const password = decoded.slice(colonIndex + 1);
+    const expectedUsername = config.inboundBasicUsername;
+    const expectedPassword = config.inboundBasicPassword;
+    if (!expectedUsername || !expectedPassword) return "Integration misconfigured — no inbound Basic auth credentials set";
+    if (username !== expectedUsername || password !== expectedPassword) return "Invalid Basic auth credentials";
+    return null;
+  }
+
   // "jwt" (or legacy "apikey_jwt") — verify Bearer JWT
   if (inboundAuth === "jwt" || inboundAuth === "apikey_jwt") {
     const authHeader = req.headers.authorization;
