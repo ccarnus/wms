@@ -316,11 +316,14 @@ function App() {
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="rounded-xl border border-black/10 bg-canvas p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
-            WMS Console
-          </p>
-          <h1 className="mt-1 text-lg font-black">Operations Hub</h1>
+        <div className="rounded-xl border border-accent/20 bg-accent-50 p-3">
+          <div className="flex items-center gap-2">
+            <img src="/Logo.png" alt="Greenlights" className="h-7 w-auto" />
+            <span className="text-base font-bold tracking-tight text-ink">
+              Green<span className="text-accent-600">lights</span>
+            </span>
+          </div>
+          <h1 className="mt-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-accent-700">Operations Hub</h1>
           <p className="mt-1 text-xs text-black/60">
             Signed in as{" "}
             <span className="font-semibold">
