@@ -12,6 +12,13 @@ function buildAuthHeaders(integration) {
     return { Authorization: "Bearer " + token };
   }
 
+  if (authType === "basic" && integration.authHeaderValue) {
+    const username = integration.config?.basicUsername || "";
+    const password = integration.authHeaderValue;
+    const encoded = Buffer.from(username + ":" + password).toString("base64");
+    return { Authorization: "Basic " + encoded };
+  }
+
   if (authType === "header" && integration.authHeaderValue) {
     return { [integration.authHeaderName || "X-Webhook-Secret"]: integration.authHeaderValue };
   }

@@ -59,12 +59,14 @@ const PROCESS_BADGES = {
 const AUTH_TYPES = [
   { id: "none", label: "None", description: "No authentication header sent with outbound requests" },
   { id: "header", label: "Secret Header", description: "A secret value sent as an HTTP header with every outbound request" },
+  { id: "basic", label: "Basic Auth", description: "Username and password sent as a Base64-encoded Authorization: Basic header" },
   { id: "jwt", label: "JWT (Bearer Token)", description: "A signed JWT token sent as Authorization: Bearer header with every outbound request" }
 ];
 
 const INBOUND_AUTH_TYPES = [
   { id: "none", label: "None", description: "No additional authentication — the webhook URL is the only protection" },
   { id: "credentials", label: "Credentials (API Key)", description: "The caller must send an X-API-Key header with a shared secret" },
+  { id: "basic", label: "Basic Auth", description: "The caller must send an Authorization: Basic header with username and password" },
   { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must send a valid JWT Bearer token signed with a shared secret (HS256)" }
 ];
 
@@ -115,7 +117,9 @@ const EMPTY_FORM = {
   name: "", connectorType: "", processes: [], config: {}, subscribedEvents: [],
   authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "",
   jwtSecret: "", jwtIssuer: "", jwtAudience: "",
-  inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: "", inboundCredentialSecret: ""
+  basicUsername: "", basicPassword: "",
+  inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: "", inboundCredentialSecret: "",
+  inboundBasicUsername: "", inboundBasicPassword: ""
 };
 
 function IntegrationsScreen({ jwtToken, user, onAuthError }) {
@@ -190,10 +194,14 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       jwtSecret: authType === "jwt" ? (integ.authHeaderValue || "") : "",
       jwtIssuer: integ.config?.jwtIssuer || "",
       jwtAudience: integ.config?.jwtAudience || "",
+      basicUsername: integ.config?.basicUsername || "",
+      basicPassword: authType === "basic" ? (integ.authHeaderValue || "") : "",
       inboundAuthType: ({ apikey: "none", apikey_jwt: "jwt" })[integ.config?.inboundAuthType] || integ.config?.inboundAuthType || "none",
       inboundJwtSecret: integ.config?.inboundJwtSecret || "",
       inboundJwtIssuer: integ.config?.inboundJwtIssuer || "",
-      inboundCredentialSecret: integ.config?.inboundCredentialSecret || ""
+      inboundCredentialSecret: integ.config?.inboundCredentialSecret || "",
+      inboundBasicUsername: integ.config?.inboundBasicUsername || "",
+      inboundBasicPassword: integ.config?.inboundBasicPassword || ""
     });
     setFormError("");
     setCurrentView(VIEW_EDIT);
@@ -207,10 +215,17 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       configWithMeta.jwtIssuer = formData.jwtIssuer;
       configWithMeta.jwtAudience = formData.jwtAudience;
     }
+    if (formData.authType === "basic") {
+      configWithMeta.basicUsername = formData.basicUsername;
+    }
     configWithMeta.inboundAuthType = formData.inboundAuthType;
     if (formData.inboundAuthType === "jwt") {
       configWithMeta.inboundJwtSecret = formData.inboundJwtSecret;
       configWithMeta.inboundJwtIssuer = formData.inboundJwtIssuer;
+    }
+    if (formData.inboundAuthType === "basic") {
+      configWithMeta.inboundBasicUsername = formData.inboundBasicUsername;
+      configWithMeta.inboundBasicPassword = formData.inboundBasicPassword;
     }
     let authHeaderName = "X-Webhook-Secret";
     let authHeaderValue = "";
@@ -220,6 +235,9 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     } else if (formData.authType === "jwt") {
       authHeaderName = "Authorization";
       authHeaderValue = formData.jwtSecret;
+    } else if (formData.authType === "basic") {
+      authHeaderName = "Authorization";
+      authHeaderValue = formData.basicPassword;
     }
     const payload = {
       name: formData.name,
@@ -453,6 +471,20 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 </div>
               )}
 
+              {formData.authType === "basic" && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Username *</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.basicUsername} onChange={(e) => setFormData({ ...formData, basicUsername: e.target.value })} placeholder="username" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Password *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.basicPassword} onChange={(e) => setFormData({ ...formData, basicPassword: e.target.value })} placeholder="password" />
+                  </div>
+                  <p className="sm:col-span-2 text-[11px] text-black/40">Credentials are Base64-encoded and sent as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Basic &lt;base64&gt;</code> with every outbound request.</p>
+                </div>
+              )}
+
               {formData.authType === "jwt" && (
                 <div className="mt-3 space-y-3">
                   <div>
@@ -516,6 +548,20 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 </div>
               )}
 
+              {formData.inboundAuthType === "basic" && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Expected Username *</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundBasicUsername} onChange={(e) => setFormData({ ...formData, inboundBasicUsername: e.target.value })} placeholder="username" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Expected Password *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundBasicPassword} onChange={(e) => setFormData({ ...formData, inboundBasicPassword: e.target.value })} placeholder="password" />
+                  </div>
+                  <p className="sm:col-span-2 text-[11px] text-black/40">The external system must send an <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Basic &lt;base64&gt;</code> header with each inbound request.</p>
+                </div>
+              )}
+
               {formData.inboundAuthType === "jwt" && (
                 <div className="mt-3 space-y-3">
                   <div>
@@ -539,6 +585,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header.</p>
                   ) : formData.inboundAuthType === "credentials" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key: &lt;secret&gt;</code> header.</p>
+                  ) : formData.inboundAuthType === "basic" ? (
+                    <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Basic &lt;base64&gt;</code> header.</p>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional headers needed.</p>
                   )}
@@ -632,6 +680,13 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
               </div>
               {detailAuthType === "none" ? (
                 <p className="mt-1 text-[11px] text-black/40">No authentication &mdash; outbound requests are sent without credentials.</p>
+              ) : detailAuthType === "basic" ? (
+                <div className="mt-1">
+                  <p className="text-[11px] text-black/40">The WMS sends an <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Basic &lt;base64&gt;</code> header with each outbound request.</p>
+                  {selectedIntegration.config?.basicUsername && (
+                    <p className="mt-1 text-[11px] text-black/40">Username: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.basicUsername}</code></p>
+                  )}
+                </div>
               ) : detailAuthType === "jwt" ? (
                 <div className="mt-1">
                   <p className="text-[11px] text-black/40">The WMS signs a short-lived JWT (HS256) and sends it as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code> with each outbound request.</p>
@@ -664,6 +719,8 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                     </div>
                   ) : detailInboundAuthType === "credentials" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key</code> header with each request.</p>
+                  ) : detailInboundAuthType === "basic" ? (
+                    <p className="mt-1.5 text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Basic &lt;base64&gt;</code> header with each request.</p>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional authentication needed.</p>
                   )}
