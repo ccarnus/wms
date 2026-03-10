@@ -61,11 +61,14 @@ function ChangePasswordScreen({ jwtToken, onPasswordChanged }) {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
       >
-        <div className="rounded-xl border border-black/10 bg-canvas p-3 text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
-            WMS Console
-          </p>
-          <h1 className="mt-1 text-xl font-black text-ink">Change Password</h1>
+        <div className="rounded-xl border border-accent/20 bg-accent-50 p-4 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <img src="/Logo.png" alt="Greenlights" className="h-8 w-auto" />
+            <span className="text-lg font-bold tracking-tight text-ink">
+              Green<span className="text-accent-600">lights</span>
+            </span>
+          </div>
+          <h1 className="mt-2 text-xl font-black text-ink">Change Password</h1>
           <p className="mt-1 text-xs text-black/60">
             You must change your password before continuing
           </p>

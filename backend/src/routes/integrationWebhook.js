@@ -1,9 +1,78 @@
 const express = require("express");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { getIntegrationByConnectorType, logIntegrationEvent } = require("../services/integrationService");
 const { getConnector } = require("../integrations");
 
 const router = express.Router();
+
+// OAuth 2.0 signing secret per integration (derived from inbound client secret)
+function getOAuthSigningSecret(integration) {
+  const config = integration.config || {};
+  return config.inboundOauth2ClientSecret || "";
+}
+
+// OAuth 2.0 Client Credentials token endpoint for inbound integrations
+router.post("/oauth/token", express.urlencoded({ extended: false }), async (req, res, next) => {
+  try {
+    const grantType = req.body.grant_type;
+    if (grantType !== "client_credentials") {
+      return res.status(400).json({ error: "unsupported_grant_type", error_description: "Only client_credentials is supported" });
+    }
+
+    // Accept client credentials from Basic header or body
+    let clientId, clientSecret;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Basic ")) {
+      const decoded = Buffer.from(authHeader.slice(6), "base64").toString("utf8");
+      const colonIdx = decoded.indexOf(":");
+      if (colonIdx === -1) {
+        return res.status(401).json({ error: "invalid_client", error_description: "Invalid Basic auth format" });
+      }
+      clientId = decodeURIComponent(decoded.slice(0, colonIdx));
+      clientSecret = decodeURIComponent(decoded.slice(colonIdx + 1));
+    } else {
+      clientId = req.body.client_id;
+      clientSecret = req.body.client_secret;
+    }
+
+    if (!clientId || !clientSecret) {
+      return res.status(401).json({ error: "invalid_client", error_description: "Missing client credentials" });
+    }
+
+    // Find integration by connector type encoded in client_id (format: "connectorType:clientId")
+    const parts = clientId.split(":");
+    const connectorType = parts[0];
+    const expectedClientId = parts.slice(1).join(":") || clientId;
+
+    const integration = await getIntegrationByConnectorType(connectorType);
+    if (!integration) {
+      return res.status(401).json({ error: "invalid_client", error_description: "Unknown client" });
+    }
+
+    const config = integration.config || {};
+    if (config.inboundAuthType !== "oauth2") {
+      return res.status(401).json({ error: "invalid_client", error_description: "OAuth 2.0 not enabled for this integration" });
+    }
+
+    if (expectedClientId !== config.inboundOauth2ClientId || clientSecret !== config.inboundOauth2ClientSecret) {
+      return res.status(401).json({ error: "invalid_client", error_description: "Invalid client credentials" });
+    }
+
+    // Issue a short-lived JWT as the access token
+    const signingSecret = getOAuthSigningSecret(integration);
+    const expiresIn = 3600;
+    const accessToken = jwt.sign(
+      { sub: clientId, integrationId: integration.id, type: "oauth2_access" },
+      signingSecret,
+      { algorithm: "HS256", expiresIn }
+    );
+
+    res.json({ access_token: accessToken, token_type: "Bearer", expires_in: expiresIn });
+  } catch (error) {
+    next(error);
+  }
+});
 
 function verifyInboundAuth(req, integration) {
   const config = integration.config || {};
@@ -44,6 +113,27 @@ function verifyInboundAuth(req, integration) {
     if (!expectedUsername || !expectedPassword) return "Integration misconfigured — no inbound Basic auth credentials set";
     if (username !== expectedUsername || password !== expectedPassword) return "Invalid Basic auth credentials";
     return null;
+  }
+
+  // "oauth2" — verify Bearer token issued by the WMS token endpoint
+  if (inboundAuth === "oauth2") {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return "Missing or invalid Authorization header — expected Bearer <token>";
+    }
+    const token = authHeader.slice(7);
+    const signingSecret = config.inboundOauth2ClientSecret;
+    if (!signingSecret) return "Integration misconfigured — no OAuth 2.0 client secret set";
+
+    try {
+      const decoded = jwt.verify(token, signingSecret, { algorithms: ["HS256"] });
+      if (decoded.type !== "oauth2_access") return "Invalid token type";
+      return null;
+    } catch (err) {
+      if (err.name === "TokenExpiredError") return "Access token has expired";
+      if (err.name === "JsonWebTokenError") return "Invalid access token: " + err.message;
+      return "Token verification failed";
+    }
   }
 
   // "jwt" (or legacy "apikey_jwt") — verify Bearer JWT

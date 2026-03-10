@@ -59,12 +59,27 @@ const buildJs = async () => {
   });
 };
 
+const copyPublicDir = async () => {
+  const publicDir = path.join(projectRoot, "public");
+  try {
+    const entries = await fs.readdir(publicDir);
+    await Promise.all(
+      entries.map((entry) =>
+        fs.copyFile(path.join(publicDir, entry), path.join(buildDir, entry))
+      )
+    );
+  } catch (_err) {
+    // No public directory — skip
+  }
+};
+
 const run = async () => {
   await fs.rm(buildDir, { recursive: true, force: true });
   await fs.mkdir(assetsDir, { recursive: true });
 
   await Promise.all([buildCss(), buildJs()]);
   await fs.writeFile(path.join(buildDir, "index.html"), buildHtml, "utf8");
+  await copyPublicDir();
 };
 
 run().catch((error) => {
