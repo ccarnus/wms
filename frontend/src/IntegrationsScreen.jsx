@@ -60,14 +60,16 @@ const AUTH_TYPES = [
   { id: "none", label: "None", description: "No authentication header sent with outbound requests" },
   { id: "header", label: "Secret Header", description: "A secret value sent as an HTTP header with every outbound request" },
   { id: "basic", label: "Basic Auth", description: "Username and password sent as a Base64-encoded Authorization: Basic header" },
-  { id: "jwt", label: "JWT (Bearer Token)", description: "A signed JWT token sent as Authorization: Bearer header with every outbound request" }
+  { id: "jwt", label: "JWT (Bearer Token)", description: "A signed JWT token sent as Authorization: Bearer header with every outbound request" },
+  { id: "oauth2", label: "OAuth 2.0", description: "Client Credentials flow — the WMS obtains an access token from the external system's token endpoint" }
 ];
 
 const INBOUND_AUTH_TYPES = [
   { id: "none", label: "None", description: "No additional authentication — the webhook URL is the only protection" },
   { id: "credentials", label: "Credentials (API Key)", description: "The caller must send an X-API-Key header with a shared secret" },
   { id: "basic", label: "Basic Auth", description: "The caller must send an Authorization: Basic header with username and password" },
-  { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must send a valid JWT Bearer token signed with a shared secret (HS256)" }
+  { id: "jwt", label: "JWT (Bearer Token)", description: "The caller must send a valid JWT Bearer token signed with a shared secret (HS256)" },
+  { id: "oauth2", label: "OAuth 2.0", description: "The caller must obtain an access token via Client Credentials from the WMS token endpoint" }
 ];
 
 /* Connector icon SVGs */
@@ -118,8 +120,10 @@ const EMPTY_FORM = {
   authType: "none", authHeaderName: "X-Webhook-Secret", authHeaderValue: "",
   jwtSecret: "", jwtIssuer: "", jwtAudience: "",
   basicUsername: "", basicPassword: "",
+  oauth2TokenUrl: "", oauth2ClientId: "", oauth2ClientSecret: "", oauth2Scope: "",
   inboundAuthType: "none", inboundJwtSecret: "", inboundJwtIssuer: "", inboundCredentialSecret: "",
-  inboundBasicUsername: "", inboundBasicPassword: ""
+  inboundBasicUsername: "", inboundBasicPassword: "",
+  inboundOauth2ClientId: "", inboundOauth2ClientSecret: ""
 };
 
 function IntegrationsScreen({ jwtToken, user, onAuthError }) {
@@ -196,12 +200,18 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
       jwtAudience: integ.config?.jwtAudience || "",
       basicUsername: integ.config?.basicUsername || "",
       basicPassword: authType === "basic" ? (integ.authHeaderValue || "") : "",
+      oauth2TokenUrl: integ.config?.oauth2TokenUrl || "",
+      oauth2ClientId: integ.config?.oauth2ClientId || "",
+      oauth2ClientSecret: authType === "oauth2" ? (integ.authHeaderValue || "") : "",
+      oauth2Scope: integ.config?.oauth2Scope || "",
       inboundAuthType: ({ apikey: "none", apikey_jwt: "jwt" })[integ.config?.inboundAuthType] || integ.config?.inboundAuthType || "none",
       inboundJwtSecret: integ.config?.inboundJwtSecret || "",
       inboundJwtIssuer: integ.config?.inboundJwtIssuer || "",
       inboundCredentialSecret: integ.config?.inboundCredentialSecret || "",
       inboundBasicUsername: integ.config?.inboundBasicUsername || "",
-      inboundBasicPassword: integ.config?.inboundBasicPassword || ""
+      inboundBasicPassword: integ.config?.inboundBasicPassword || "",
+      inboundOauth2ClientId: integ.config?.inboundOauth2ClientId || "",
+      inboundOauth2ClientSecret: integ.config?.inboundOauth2ClientSecret || ""
     });
     setFormError("");
     setCurrentView(VIEW_EDIT);
@@ -218,6 +228,11 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     if (formData.authType === "basic") {
       configWithMeta.basicUsername = formData.basicUsername;
     }
+    if (formData.authType === "oauth2") {
+      configWithMeta.oauth2TokenUrl = formData.oauth2TokenUrl;
+      configWithMeta.oauth2ClientId = formData.oauth2ClientId;
+      configWithMeta.oauth2Scope = formData.oauth2Scope;
+    }
     configWithMeta.inboundAuthType = formData.inboundAuthType;
     if (formData.inboundAuthType === "jwt") {
       configWithMeta.inboundJwtSecret = formData.inboundJwtSecret;
@@ -226,6 +241,10 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     if (formData.inboundAuthType === "basic") {
       configWithMeta.inboundBasicUsername = formData.inboundBasicUsername;
       configWithMeta.inboundBasicPassword = formData.inboundBasicPassword;
+    }
+    if (formData.inboundAuthType === "oauth2") {
+      configWithMeta.inboundOauth2ClientId = formData.inboundOauth2ClientId;
+      configWithMeta.inboundOauth2ClientSecret = formData.inboundOauth2ClientSecret;
     }
     let authHeaderName = "X-Webhook-Secret";
     let authHeaderValue = "";
@@ -238,6 +257,9 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
     } else if (formData.authType === "basic") {
       authHeaderName = "Authorization";
       authHeaderValue = formData.basicPassword;
+    } else if (formData.authType === "oauth2") {
+      authHeaderName = "Authorization";
+      authHeaderValue = formData.oauth2ClientSecret;
     }
     const payload = {
       name: formData.name,
@@ -506,6 +528,32 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                   </div>
                 </div>
               )}
+
+              {formData.authType === "oauth2" && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Token URL *</label>
+                    <input type="url" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.oauth2TokenUrl} onChange={(e) => setFormData({ ...formData, oauth2TokenUrl: e.target.value })} placeholder="https://auth.example.com/oauth/token" />
+                    <p className="mt-0.5 text-[11px] text-black/40">The external system's OAuth 2.0 token endpoint.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-black/70">Client ID *</label>
+                      <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.oauth2ClientId} onChange={(e) => setFormData({ ...formData, oauth2ClientId: e.target.value })} placeholder="your-client-id" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-black/70">Client Secret *</label>
+                      <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.oauth2ClientSecret} onChange={(e) => setFormData({ ...formData, oauth2ClientSecret: e.target.value })} placeholder="your-client-secret" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Scope</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.oauth2Scope} onChange={(e) => setFormData({ ...formData, oauth2Scope: e.target.value })} placeholder="webhooks:write" />
+                    <p className="mt-0.5 text-[11px] text-black/40">Optional. Space-separated scopes to request from the token endpoint.</p>
+                  </div>
+                  <p className="text-[11px] text-black/40">The WMS will use the Client Credentials grant to obtain an access token, then send it as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code>. Tokens are cached until expiry.</p>
+                </div>
+              )}
             </div>
 
             {/* Inbound: External -> WMS */}
@@ -577,11 +625,33 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                 </div>
               )}
 
+              {formData.inboundAuthType === "oauth2" && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Client ID *</label>
+                    <input type="text" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundOauth2ClientId} onChange={(e) => setFormData({ ...formData, inboundOauth2ClientId: e.target.value })} placeholder="external-system-client-id" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-black/70">Client Secret *</label>
+                    <input type="password" className="mt-1 w-full rounded-lg border border-black/15 bg-canvas px-3 py-2 text-sm" value={formData.inboundOauth2ClientSecret} onChange={(e) => setFormData({ ...formData, inboundOauth2ClientSecret: e.target.value })} placeholder="external-system-client-secret" />
+                  </div>
+                  <p className="sm:col-span-2 text-[11px] text-black/40">The external system must first obtain an access token by calling the token endpoint with these Client Credentials, then include the token as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code> with each inbound request.</p>
+                </div>
+              )}
+
               {formData.connectorType ? (
                 <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <label className="block text-xs font-semibold text-blue-800">Inbound Webhook URL</label>
                   <code className="mt-1 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/" + formData.connectorType}</code>
-                  {formData.inboundAuthType === "jwt" ? (
+                  {formData.inboundAuthType === "oauth2" ? (
+                    <div className="mt-1.5 space-y-1.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-blue-700">Token Endpoint</label>
+                        <code className="mt-0.5 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/oauth/token"}</code>
+                      </div>
+                      <p className="text-[11px] text-blue-600">The external system must POST <code className="rounded bg-blue-100 px-1 py-0.5">grant_type=client_credentials</code> with <code className="rounded bg-blue-100 px-1 py-0.5">client_id={formData.connectorType}:{formData.inboundOauth2ClientId || "<client_id>"}</code> to obtain a Bearer token.</p>
+                    </div>
+                  ) : formData.inboundAuthType === "jwt" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;jwt&gt;</code> header.</p>
                   ) : formData.inboundAuthType === "credentials" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must call this URL with an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key: &lt;secret&gt;</code> header.</p>
@@ -687,6 +757,19 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                     <p className="mt-1 text-[11px] text-black/40">Username: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.basicUsername}</code></p>
                   )}
                 </div>
+              ) : detailAuthType === "oauth2" ? (
+                <div className="mt-1">
+                  <p className="text-[11px] text-black/40">The WMS obtains an access token via OAuth 2.0 Client Credentials and sends it as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code> with each outbound request.</p>
+                  {selectedIntegration.config?.oauth2TokenUrl && (
+                    <p className="mt-1 text-[11px] text-black/40">Token URL: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.oauth2TokenUrl}</code></p>
+                  )}
+                  {selectedIntegration.config?.oauth2ClientId && (
+                    <p className="mt-0.5 text-[11px] text-black/40">Client ID: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.oauth2ClientId}</code></p>
+                  )}
+                  {selectedIntegration.config?.oauth2Scope && (
+                    <p className="mt-0.5 text-[11px] text-black/40">Scope: <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">{selectedIntegration.config.oauth2Scope}</code></p>
+                  )}
+                </div>
               ) : detailAuthType === "jwt" ? (
                 <div className="mt-1">
                   <p className="text-[11px] text-black/40">The WMS signs a short-lived JWT (HS256) and sends it as <code className="rounded bg-canvas px-1 py-0.5 text-[10px]">Authorization: Bearer &lt;token&gt;</code> with each outbound request.</p>
@@ -721,6 +804,14 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">X-API-Key</code> header with each request.</p>
                   ) : detailInboundAuthType === "basic" ? (
                     <p className="mt-1.5 text-[11px] text-blue-600">The external system must include an <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Basic &lt;base64&gt;</code> header with each request.</p>
+                  ) : detailInboundAuthType === "oauth2" ? (
+                    <div className="mt-1.5 space-y-1.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-blue-700">Token Endpoint</label>
+                        <code className="mt-0.5 block rounded bg-blue-100 px-2 py-1.5 text-[11px] text-blue-900 break-all select-all">{window.location.origin + "/api/webhook/oauth/token"}</code>
+                      </div>
+                      <p className="text-[11px] text-blue-600">The external system must obtain an access token via Client Credentials, then include it as <code className="rounded bg-blue-100 px-1 py-0.5">Authorization: Bearer &lt;token&gt;</code> with each request.</p>
+                    </div>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-blue-600">Share this URL with the external system. No additional authentication needed.</p>
                   )}
