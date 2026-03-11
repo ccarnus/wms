@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 #Claude configs
 .claude
+
+#AWS 
+aws/*
