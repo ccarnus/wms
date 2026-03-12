@@ -137,8 +137,9 @@ Example order event payloads:
 - Database schema and sample data are loaded from `database/init/001_schema.sql` on first DB boot.
 - Order events are enqueued in Redis and processed asynchronously by `task-worker`.
 - Task generation resolves zones from `location_zones` mappings; missing mappings reject the job.
-- Frontend now includes a mobile-first Operator Task screen (`My Current Task`) with optimistic task actions and Socket.IO updates.
-- The operator screen uses `operatorId` + JWT token input to subscribe to operator-specific realtime rooms.
+- Frontend includes a mobile-first Operator Task screen with a task list (in_progress, paused, assigned/pending), tap-to-view detail, and optimistic task actions. Tasks are refreshed exclusively via Socket.IO (no polling or manual refresh). Operators must explicitly start tasks by tapping on them. Debug info (API URL, operator ID, connection status) is accessible via a settings panel from the user avatar.
+- The operator view is exclusive to the `operator` role. Operators get a dedicated sidebar-less, phone/tablet-optimized layout.
+- The operator screen uses `operatorId` + JWT token to subscribe to operator-specific realtime rooms.
 - Frontend now includes a Manager Labor Dashboard with:
   - live KPI cards,
   - operator performance grid,
@@ -152,7 +153,7 @@ Example order event payloads:
   - low-stock SKU list with threshold filter,
   - top SKUs by units,
   - recent inventory movements.
-- The HMI now uses a left sidebar menu to switch between `Manager`, `Operator`, and `Inventory` views.
+- The HMI uses a left sidebar menu to switch between views (`Dashboard`, `Manager`, `Inventory`, `Users`, `Integrations`). Operators bypass the sidebar entirely and get a full-screen task interface.
 - Frontend build no longer uses Vite. Static assets are bundled with `esbuild` + `postcss` into `frontend/build` and served by Nginx.
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000`) using:
   - task priority (`highest first`)

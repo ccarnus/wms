@@ -135,9 +135,9 @@ const VIEWS = [
 ];
 
 const VIEWS_BY_ROLE = {
-  admin: ["dashboard", "manager", "operator", "inventory", "users", "integrations"],
-  warehouse_manager: ["dashboard", "manager", "operator", "inventory", "users"],
-  supervisor: ["dashboard", "manager", "operator", "inventory", "users"],
+  admin: ["dashboard", "manager", "inventory", "users", "integrations"],
+  warehouse_manager: ["dashboard", "manager", "inventory", "users"],
+  supervisor: ["dashboard", "manager", "inventory", "users"],
   operator: ["operator"],
   viewer: ["dashboard", "manager", "inventory"]
 };
@@ -272,12 +272,14 @@ function App() {
     );
   }
 
+  const isOperatorRole = auth.user?.role === "operator";
+
   const activeViewComponent = (() => {
     if (view === "dashboard") {
       return <DashboardScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     if (view === "operator") {
-      return <OperatorTaskScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
+      return <OperatorTaskScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} onLogout={handleLogout} />;
     }
     if (view === "inventory") {
       return <InventoryDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
@@ -290,6 +292,14 @@ function App() {
     }
     return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
   })();
+
+  if (isOperatorRole) {
+    return (
+      <div className="min-h-screen bg-canvas text-ink">
+        {activeViewComponent}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
