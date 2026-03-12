@@ -68,7 +68,9 @@ Workers (separate Node processes, same Docker image as backend):
 - React 18 + Tailwind CSS. No routing library — view switching via `useState` in `App.jsx`.
 - Built with **esbuild** (bundler) + **postcss** (Tailwind). Build script: `frontend/scripts/build.mjs`.
 - `App.jsx` gates all views behind login. Passes `jwtToken` and `user` as props to child components.
-- Three views: `ManagerLaborDashboard`, `OperatorTaskScreen`, `InventoryDashboard`. Views are filtered by user role.
+- Views: `DashboardScreen`, `ManagerLaborDashboard`, `OperatorTaskScreen`, `InventoryDashboard`, `UserManagementScreen`, `IntegrationsScreen`. Views are filtered by user role.
+- **Operator role** gets a dedicated mobile-first layout (no sidebar). The operator view is exclusive to the `operator` role — other roles do not see it.
+- `OperatorTaskScreen` shows a task list (in_progress, paused, assigned) with tap-to-view detail. Tasks are not auto-started; the operator must explicitly click "Start Task". Auto-refresh is websocket-only (no polling or manual refresh button). Debug info (API URL, operator ID) is in a settings panel accessed via the user avatar.
 - API calls use native `fetch` with `Authorization: Bearer` header. No axios.
 - Real-time via `socket.io-client`. Events: `TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`.
 - Tailwind custom theme colors: `canvas` (bg), `ink` (text), `accent` (teal/primary), `signal` (orange/error).

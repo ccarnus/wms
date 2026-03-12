@@ -247,6 +247,20 @@ const updateTaskStatus = async (taskId, newStatus, options = {}) => {
       throw createHttpError(409, `Invalid task status transition from '${currentTask.status}' to '${newStatus}'`);
     }
 
+    // Enforce: only one in_progress task per operator at a time
+    if (newStatus === "in_progress" && currentTask.assignedOperatorId) {
+      const activeCheck = await client.query(
+        `SELECT id FROM tasks
+         WHERE assigned_operator_id = $1
+           AND status = 'in_progress'
+           AND id != $2`,
+        [currentTask.assignedOperatorId, taskId]
+      );
+      if (activeCheck.rowCount > 0) {
+        throw createHttpError(409, "Operator already has an in-progress task. Complete or pause it first.");
+      }
+    }
+
     const updateResult = await client.query(
       `UPDATE tasks
        SET status = $2::task_status,

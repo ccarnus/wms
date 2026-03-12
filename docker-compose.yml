@@ -190,8 +190,6 @@ services:
       SEED_TEST_DATA: ${SEED_TEST_DATA:-false}
       SIM_API_BASE_URL: http://backend:3000
       SIM_ORDER_INTERVAL_MS: ${SIM_ORDER_INTERVAL_MS:-20000}
-      SIM_TASK_INTERVAL_MS: ${SIM_TASK_INTERVAL_MS:-8000}
-      SIM_STATUS_INTERVAL_MS: ${SIM_STATUS_INTERVAL_MS:-30000}
     depends_on:
       backend:
         condition: service_healthy

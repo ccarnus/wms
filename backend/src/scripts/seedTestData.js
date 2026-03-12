@@ -4,6 +4,16 @@ const { hashPassword } = require("../services/authService");
 /**
  * Test/demo seed data — only runs when SEED_TEST_DATA=true.
  * Idempotent: uses ON CONFLICT DO NOTHING so it's safe to run repeatedly.
+ *
+ * Seeds:
+ *  - Warehouses, locations, products, inventory
+ *  - Rich movement history (30 days)
+ *  - Zones, zone-location mappings
+ *  - Operators, operator-zone assignments
+ *  - Test user accounts
+ *  - Tasks with realistic status distribution (max 1 active per operator)
+ *  - Audit logs, labor metrics (14 days)
+ *  - Task generation events (simulating past OMS orders)
  */
 
 const seed = async () => {
@@ -22,9 +32,8 @@ const seed = async () => {
       ('WH-LYON-01',   'Lyon Regional Hub')
     ON CONFLICT (code) DO NOTHING
   `);
-  console.log("  ✓ warehouses");
+  console.log("  warehouses");
 
-  // Fetch warehouse IDs for FK references
   const { rows: warehouses } = await query(`SELECT id, code FROM warehouses`);
   const whId = (code) => warehouses.find((w) => w.code === code).id;
 
@@ -56,7 +65,7 @@ const seed = async () => {
       ($3, 'LYN-BULK-01',   'Lyon Bulk Storage 1')
     ON CONFLICT (warehouse_id, code) DO NOTHING
   `, [whId("WH-PARIS-01"), whId("WH-LILLE-01"), whId("WH-LYON-01")]);
-  console.log("  ✓ locations");
+  console.log("  locations");
 
   // ── Products ────────────────────────────────────────────────
   await query(`
@@ -85,7 +94,7 @@ const seed = async () => {
       ('SKU-4005', 'Warehouse Fan Industrial')
     ON CONFLICT (sku) DO NOTHING
   `);
-  console.log("  ✓ products");
+  console.log("  products");
 
   // ── Inventory ───────────────────────────────────────────────
   await query(`
@@ -123,32 +132,57 @@ const seed = async () => {
     JOIN locations l ON l.code = s.loc_code
     ON CONFLICT (product_id, location_id) DO NOTHING
   `);
-  console.log("  ✓ inventory");
+  console.log("  inventory");
 
-  // ── Movements (recent history) ──────────────────────────────
-  await query(`
-    INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, movement_type, reference, created_at)
-    SELECT p.id, fl.id, tl.id, s.qty, s.mtype, s.ref, NOW() - (s.days_ago || ' days')::interval
-    FROM (VALUES
-      ('SKU-1001', NULL,           'PAR-RACK-A1',  50, 'INBOUND',   'PO-20260201',  5),
-      ('SKU-1001', NULL,           'PAR-RACK-A1',  70, 'INBOUND',   'PO-20260205',  3),
-      ('SKU-2001', NULL,           'PAR-RACK-B1', 200, 'INBOUND',   'PO-20260210',  2),
-      ('SKU-1002', 'PAR-RACK-A1', 'PAR-DOCK-OUT', 10, 'OUTBOUND',  'SO-20260212',  1),
-      ('SKU-3001', NULL,           'LIL-RACK-A1', 300, 'INBOUND',   'PO-20260208',  4),
-      ('SKU-1001', 'PAR-RACK-A1', 'LYN-RACK-B1',  20, 'TRANSFER',  'TRF-0001',     2),
-      ('SKU-2003', 'PAR-BULK-01', NULL,            5,  'ADJUSTMENT','ADJ-0001',      1),
-      ('SKU-1004', NULL,           'PAR-RACK-A2',  80, 'INBOUND',   'PO-20260215',  3),
-      ('SKU-2005', NULL,           'PAR-BULK-02', 300, 'INBOUND',   'PO-20260216',  2),
-      ('SKU-3004', NULL,           'LIL-RACK-A2',  40, 'INBOUND',   'PO-20260218',  1),
-      ('SKU-4002', 'LYN-RACK-A1', 'LYN-DOCK-OUT', 15, 'OUTBOUND',  'SO-20260220',  1),
-      ('SKU-2007', NULL,           'PAR-RACK-B2',  60, 'INBOUND',   'PO-20260222',  0)
-    ) AS s(sku, from_loc, to_loc, qty, mtype, ref, days_ago)
-    JOIN products  p  ON p.sku  = s.sku
-    LEFT JOIN locations fl ON fl.code = s.from_loc
-    LEFT JOIN locations tl ON tl.code = s.to_loc
-    ON CONFLICT DO NOTHING
-  `);
-  console.log("  ✓ movements");
+  // ── Movements (30-day history) ──────────────────────────────
+  const movementData = [
+    // Older history (20-30 days ago)
+    ['SKU-1001', null,           'PAR-RACK-A1',  100, 'INBOUND',   'PO-20260210-H01', 28],
+    ['SKU-2001', null,           'PAR-RACK-B1',  250, 'INBOUND',   'PO-20260210-H02', 27],
+    ['SKU-3001', null,           'LIL-RACK-A1',  150, 'INBOUND',   'PO-20260211-H01', 26],
+    ['SKU-1002', 'PAR-RACK-A1', 'PAR-DOCK-OUT',  20, 'OUTBOUND',  'SO-20260212-H01', 25],
+    ['SKU-2003', null,           'PAR-BULK-01',  100, 'INBOUND',   'PO-20260213-H01', 24],
+    ['SKU-3003', null,           'LIL-RACK-A2',   80, 'INBOUND',   'PO-20260214-H01', 23],
+    ['SKU-1001', 'PAR-RACK-A1', 'LYN-RACK-B1',   30, 'TRANSFER',  'TRF-H001',        22],
+    ['SKU-4002', null,           'LYN-RACK-A1',   50, 'INBOUND',   'PO-20260215-H01', 21],
+    ['SKU-2005', null,           'PAR-BULK-02',  200, 'INBOUND',   'PO-20260216-H01', 20],
+    // Mid history (10-20 days ago)
+    ['SKU-1003', null,           'PAR-RACK-A2',   30, 'INBOUND',   'PO-20260220-H01', 18],
+    ['SKU-2002', null,           'PAR-BULK-01',  100, 'INBOUND',   'PO-20260221-H01', 17],
+    ['SKU-1001', 'PAR-RACK-A1', 'PAR-DOCK-OUT',  15, 'OUTBOUND',  'SO-20260222-H01', 16],
+    ['SKU-3002', null,           'LIL-RACK-A1',   75, 'INBOUND',   'PO-20260223-H01', 15],
+    ['SKU-2004', null,           'PAR-BULK-01',   40, 'INBOUND',   'PO-20260224-H01', 14],
+    ['SKU-1005', null,           'PAR-RACK-A3',   55, 'INBOUND',   'PO-20260225-H01', 13],
+    ['SKU-4001', null,           'LIL-BULK-01',   10, 'INBOUND',   'PO-20260226-H01', 12],
+    ['SKU-2007', null,           'PAR-RACK-B2',   30, 'INBOUND',   'PO-20260227-H01', 11],
+    ['SKU-3004', null,           'LIL-RACK-A2',   40, 'INBOUND',   'PO-20260228-H01', 10],
+    // Recent history (1-10 days ago)
+    ['SKU-1001', null,           'PAR-RACK-A1',   50, 'INBOUND',   'PO-20260301-001',  9],
+    ['SKU-1001', null,           'PAR-RACK-A1',   70, 'INBOUND',   'PO-20260302-001',  8],
+    ['SKU-2001', null,           'PAR-RACK-B1',  200, 'INBOUND',   'PO-20260303-001',  7],
+    ['SKU-1002', 'PAR-RACK-A1', 'PAR-DOCK-OUT',  10, 'OUTBOUND',  'SO-20260304-001',  6],
+    ['SKU-3001', null,           'LIL-RACK-A1',  150, 'INBOUND',   'PO-20260305-001',  5],
+    ['SKU-1001', 'PAR-RACK-A1', 'LYN-RACK-B1',   20, 'TRANSFER',  'TRF-0001',         4],
+    ['SKU-2003', 'PAR-BULK-01', null,              5, 'ADJUSTMENT', 'ADJ-0001',         3],
+    ['SKU-1004', null,           'PAR-RACK-A2',   80, 'INBOUND',   'PO-20260308-001',  2],
+    ['SKU-2005', null,           'PAR-BULK-02',  100, 'INBOUND',   'PO-20260309-001',  1],
+    ['SKU-3005', null,           'LIL-RACK-B1',   90, 'INBOUND',   'PO-20260310-001',  1],
+    ['SKU-4002', 'LYN-RACK-A1', 'LYN-DOCK-OUT',  15, 'OUTBOUND',  'SO-20260311-001',  0],
+    ['SKU-2007', null,           'PAR-RACK-B2',   30, 'INBOUND',   'PO-20260312-001',  0],
+  ];
+
+  for (const [sku, fromLoc, toLoc, qty, mtype, ref, daysAgo] of movementData) {
+    await query(`
+      INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, movement_type, reference, created_at)
+      SELECT p.id, fl.id, tl.id, $4, $5, $6, NOW() - ($7 || ' days')::interval + (random() * interval '8 hours')
+      FROM products p
+      LEFT JOIN locations fl ON fl.code = $2
+      LEFT JOIN locations tl ON tl.code = $3
+      WHERE p.sku = $1
+      ON CONFLICT DO NOTHING
+    `, [sku, fromLoc, toLoc, qty, mtype, ref, daysAgo]);
+  }
+  console.log("  movements (30-day history)");
 
   // ── Zones ───────────────────────────────────────────────────
   await query(`
@@ -164,13 +198,12 @@ const seed = async () => {
       ($3, 'Lyon Dock Zone',      'dock')
     ON CONFLICT (warehouse_id, name) DO NOTHING
   `, [whId("WH-PARIS-01"), whId("WH-LILLE-01"), whId("WH-LYON-01")]);
-  console.log("  ✓ zones");
+  console.log("  zones");
 
-  // Fetch zone IDs
   const { rows: zones } = await query(`SELECT id, name FROM zones`);
   const zoneId = (name) => zones.find((z) => z.name === name).id;
 
-  // ── Location → Zone mapping ─────────────────────────────────
+  // ── Location -> Zone mapping ────────────────────────────────
   await query(`
     INSERT INTO location_zones (location_id, zone_id)
     SELECT l.id, s.zone_id
@@ -208,26 +241,26 @@ const seed = async () => {
     zoneId("Lille Bulk Zone"),
     zoneId("Lyon Pick Zone"), zoneId("Lyon Dock Zone")
   ]);
-  console.log("  ✓ location_zones");
+  console.log("  location_zones");
 
   // ── Operators ───────────────────────────────────────────────
   await query(`
     INSERT INTO operators (id, name, role, status, shift_start, shift_end, performance_score) VALUES
       ('a0000000-0000-4000-a000-000000000001', 'Alice Martin',    'picker',    'available', '06:00', '14:00', 92.5),
       ('a0000000-0000-4000-a000-000000000002', 'Bob Dupont',      'picker',    'available', '06:00', '14:00', 87.0),
-      ('a0000000-0000-4000-a000-000000000003', 'Claire Bernard',  'picker',    'offline',   '14:00', '22:00', 95.2),
+      ('a0000000-0000-4000-a000-000000000003', 'Claire Bernard',  'picker',    'available', '14:00', '22:00', 95.2),
       ('a0000000-0000-4000-a000-000000000004', 'David Leroy',     'forklift',  'available', '06:00', '14:00', 78.3),
-      ('a0000000-0000-4000-a000-000000000005', 'Emma Petit',      'forklift',  'busy',      '06:00', '14:00', 84.1),
-      ('a0000000-0000-4000-a000-000000000006', 'François Moreau', 'picker',    'available', '14:00', '22:00', 90.0),
+      ('a0000000-0000-4000-a000-000000000005', 'Emma Petit',      'forklift',  'available', '06:00', '14:00', 84.1),
+      ('a0000000-0000-4000-a000-000000000006', 'Francois Moreau', 'picker',    'available', '14:00', '22:00', 90.0),
       ('a0000000-0000-4000-a000-000000000007', 'Gabrielle Roux',  'picker',    'available', '06:00', '14:00', 88.7),
-      ('a0000000-0000-4000-a000-000000000008', 'Hugo Lambert',    'forklift',  'busy',      '14:00', '22:00', 81.4),
+      ('a0000000-0000-4000-a000-000000000008', 'Hugo Lambert',    'forklift',  'available', '14:00', '22:00', 81.4),
       ('a0000000-0000-4000-a000-000000000009', 'Isabelle Faure',  'picker',    'available', '22:00', '06:00', 93.8),
-      ('a0000000-0000-4000-a000-000000000010', 'Julien Garnier',  'forklift',  'offline',   '22:00', '06:00', 76.5)
+      ('a0000000-0000-4000-a000-000000000010', 'Julien Garnier',  'forklift',  'available', '22:00', '06:00', 76.5)
     ON CONFLICT (id) DO NOTHING
   `);
-  console.log("  ✓ operators");
+  console.log("  operators");
 
-  // ── Operator → Zone assignments ─────────────────────────────
+  // ── Operator -> Zone assignments ────────────────────────────
   await query(`
     INSERT INTO operator_zones (operator_id, zone_id) VALUES
       ('a0000000-0000-4000-a000-000000000001', $1),
@@ -262,7 +295,7 @@ const seed = async () => {
     zoneId("Lyon Dock Zone"),     // $8
     zoneId("Paris Staging Zone")  // $9
   ]);
-  console.log("  ✓ operator_zones");
+  console.log("  operator_zones");
 
   // ── Users (test accounts) ──────────────────────────────────
   const testUsers = [
@@ -286,41 +319,53 @@ const seed = async () => {
       [u.username, hash, u.displayName, u.role, u.operatorId]
     );
   }
-  console.log("  ✓ users (test accounts)");
+  console.log("  users (test accounts)");
 
-  // ── Tasks (mix of statuses) ─────────────────────────────────
+  // ── Tasks ───────────────────────────────────────────────────
+  // Rule: max 1 active task (assigned/in_progress/paused) per operator.
+  // Operators 001-004 each get one active task. The rest are free.
+  // Many completed tasks for historical KPIs.
   const taskRows = [
-    // Completed tasks (historical)
-    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260201-001", est: 120, actual: 105, daysAgo: 5 },
-    { type: "pick",      priority: 70, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000002", doc: "SO-20260201-002", est: 90,  actual: 88,  daysAgo: 5 },
-    { type: "putaway",   priority: 60, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260202-001", est: 150, actual: 140, daysAgo: 4 },
-    { type: "pick",      priority: 85, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260205-001", est: 110, actual: 95,  daysAgo: 3 },
-    { type: "putaway",   priority: 55, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260207-001", est: 160, actual: 170, daysAgo: 2 },
-    { type: "pick",      priority: 75, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260208-001", est: 100, actual: 92,  daysAgo: 2 },
-    { type: "pick",      priority: 80, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260209-001", est: 130, actual: 118, daysAgo: 1 },
-    { type: "putaway",   priority: 60, status: "completed",   zone: "Lille Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "PO-20260210-001", est: 140, actual: 135, daysAgo: 1 },
+    // Completed tasks (historical, spread across 14 days) — operators can have many completed
+    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260226-001", est: 120, actual: 105, daysAgo: 14 },
+    { type: "pick",      priority: 70, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000002", doc: "SO-20260226-002", est: 90,  actual: 88,  daysAgo: 14 },
+    { type: "putaway",   priority: 60, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260227-001", est: 150, actual: 140, daysAgo: 13 },
+    { type: "pick",      priority: 85, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260228-001", est: 110, actual: 95,  daysAgo: 12 },
+    { type: "putaway",   priority: 55, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260301-001", est: 160, actual: 170, daysAgo: 11 },
+    { type: "pick",      priority: 75, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260301-002", est: 100, actual: 92,  daysAgo: 10 },
+    { type: "pick",      priority: 80, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260302-001", est: 130, actual: 118, daysAgo: 9 },
+    { type: "putaway",   priority: 60, status: "completed",   zone: "Lille Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "PO-20260303-001", est: 140, actual: 135, daysAgo: 8 },
+    { type: "pick",      priority: 90, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260304-001", est: 95,  actual: 82,  daysAgo: 7 },
+    { type: "pick",      priority: 85, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260305-001", est: 105, actual: 98,  daysAgo: 6 },
+    { type: "putaway",   priority: 65, status: "completed",   zone: "Paris Dock Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260305-002", est: 170, actual: 155, daysAgo: 6 },
+    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000002", doc: "SO-20260306-001", est: 100, actual: 94,  daysAgo: 5 },
+    { type: "pick",      priority: 75, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000009", doc: "SO-20260306-002", est: 115, actual: 108, daysAgo: 5 },
+    { type: "putaway",   priority: 60, status: "completed",   zone: "Lyon Dock Zone",     operator: "a0000000-0000-4000-a000-000000000008", doc: "PO-20260307-001", est: 145, actual: 138, daysAgo: 4 },
+    { type: "pick",      priority: 85, status: "completed",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260308-001", est: 100, actual: 90,  daysAgo: 3 },
+    { type: "pick",      priority: 90, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "SO-20260309-001", est: 110, actual: 100, daysAgo: 2 },
+    { type: "putaway",   priority: 65, status: "completed",   zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260310-001", est: 150, actual: 142, daysAgo: 1 },
+    { type: "pick",      priority: 80, status: "completed",   zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260311-001", est: 105, actual: 97,  daysAgo: 1 },
+    { type: "pick",      priority: 70, status: "completed",   zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260311-002", est: 95,  actual: 88,  daysAgo: 1 },
     // Cancelled
-    { type: "pick",      priority: 75, status: "cancelled",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260206-001", est: 130, actual: null, daysAgo: 2 },
-    // In-progress tasks (active right now)
-    { type: "pick",      priority: 90, status: "in_progress", zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260225-001", est: 100, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 85, status: "in_progress", zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260225-002", est: 110, actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 65, status: "in_progress", zone: "Paris Bulk Zone",    operator: "a0000000-0000-4000-a000-000000000005", doc: "PO-20260225-001", est: 180, actual: null, daysAgo: 0 },
-    // Paused task
-    { type: "pick",      priority: 70, status: "paused",      zone: "Lyon Pick Zone",     operator: "a0000000-0000-4000-a000-000000000009", doc: "SO-20260224-001", est: 95,  actual: null, daysAgo: 0 },
-    // Assigned tasks (waiting for operators to start)
-    { type: "putaway",   priority: 60, status: "assigned",    zone: "Paris Dock Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260226-001", est: 180, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 80, status: "assigned",    zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000007", doc: "SO-20260226-001", est: 120, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 70, status: "assigned",    zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260226-002", est: 105, actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 55, status: "assigned",    zone: "Lyon Dock Zone",     operator: "a0000000-0000-4000-a000-000000000008", doc: "PO-20260226-002", est: 160, actual: null, daysAgo: 0 },
-    // Created tasks (unassigned, pending)
-    { type: "replenish", priority: 50, status: "created",     zone: "Paris Pick Zone",    operator: null,                                   doc: "RPL-20260227-001", est: 200, actual: null, daysAgo: 0 },
-    { type: "count",     priority: 30, status: "created",     zone: "Lyon Pick Zone",     operator: null,                                   doc: "CNT-20260227-001", est: 300, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 85, status: "created",     zone: "Paris Pick Zone",    operator: null,                                   doc: "SO-20260227-001",  est: 115, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 78, status: "created",     zone: "Lille Pick Zone",    operator: null,                                   doc: "SO-20260227-002",  est: 95,  actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 60, status: "created",     zone: "Paris Bulk Zone",    operator: null,                                   doc: "PO-20260227-001",  est: 145, actual: null, daysAgo: 0 },
-    { type: "pick",      priority: 90, status: "created",     zone: "Lyon Pick Zone",     operator: null,                                   doc: "SO-20260228-001",  est: 100, actual: null, daysAgo: 0 },
-    { type: "putaway",   priority: 65, status: "created",     zone: "Lille Dock Zone",    operator: null,                                   doc: "PO-20260228-001",  est: 170, actual: null, daysAgo: 0 },
-    { type: "replenish", priority: 45, status: "created",     zone: "Lille Pick Zone",    operator: null,                                   doc: "RPL-20260228-001", est: 220, actual: null, daysAgo: 0 }
+    { type: "pick",      priority: 75, status: "cancelled",   zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000006", doc: "SO-20260306-003", est: 130, actual: null, daysAgo: 5 },
+    // Active tasks — EXACTLY ONE per operator (only operators 001-004 have active tasks)
+    // Operator 001 (Alice): assigned task (pending, not started)
+    { type: "pick",      priority: 90, status: "assigned",    zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000001", doc: "SO-20260312-001", est: 100, actual: null, daysAgo: 0 },
+    // Operator 002 (Bob): assigned task (pending, not started)
+    { type: "pick",      priority: 85, status: "assigned",    zone: "Paris Pick Zone",    operator: "a0000000-0000-4000-a000-000000000002", doc: "SO-20260312-002", est: 110, actual: null, daysAgo: 0 },
+    // Operator 003 (Claire): assigned task (pending)
+    { type: "pick",      priority: 80, status: "assigned",    zone: "Lille Pick Zone",    operator: "a0000000-0000-4000-a000-000000000003", doc: "SO-20260312-003", est: 95,  actual: null, daysAgo: 0 },
+    // Operator 004 (David): assigned task (pending)
+    { type: "putaway",   priority: 60, status: "assigned",    zone: "Paris Dock Zone",    operator: "a0000000-0000-4000-a000-000000000004", doc: "PO-20260312-001", est: 180, actual: null, daysAgo: 0 },
+    // Created tasks (unassigned, to be picked up by assignment worker or manual assignment)
+    { type: "replenish", priority: 50, status: "created",     zone: "Paris Pick Zone",    operator: null, doc: "RPL-20260312-001", est: 200, actual: null, daysAgo: 0 },
+    { type: "count",     priority: 30, status: "created",     zone: "Lyon Pick Zone",     operator: null, doc: "CNT-20260312-001", est: 300, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 85, status: "created",     zone: "Paris Pick Zone",    operator: null, doc: "SO-20260312-004",  est: 115, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 78, status: "created",     zone: "Lille Pick Zone",    operator: null, doc: "SO-20260312-005",  est: 95,  actual: null, daysAgo: 0 },
+    { type: "putaway",   priority: 60, status: "created",     zone: "Paris Bulk Zone",    operator: null, doc: "PO-20260312-002",  est: 145, actual: null, daysAgo: 0 },
+    { type: "pick",      priority: 90, status: "created",     zone: "Lyon Pick Zone",     operator: null, doc: "SO-20260312-006",  est: 100, actual: null, daysAgo: 0 },
+    { type: "putaway",   priority: 65, status: "created",     zone: "Lille Dock Zone",    operator: null, doc: "PO-20260312-003",  est: 170, actual: null, daysAgo: 0 },
+    { type: "replenish", priority: 45, status: "created",     zone: "Lille Pick Zone",    operator: null, doc: "RPL-20260312-002", est: 220, actual: null, daysAgo: 0 },
   ];
 
   const taskIds = [];
@@ -344,10 +389,9 @@ const seed = async () => {
 
     if (rows.length > 0) taskIds.push({ id: rows[0].id, ...t });
   }
-  console.log(`  ✓ tasks (${taskIds.length} created)`);
+  console.log(`  tasks (${taskIds.length} created)`);
 
   // ── Task Lines ──────────────────────────────────────────────
-  // Pick locations per warehouse for generating task lines
   const pickLocations = {
     "Paris Pick Zone":  { from: ["PAR-RACK-A1", "PAR-RACK-A2", "PAR-RACK-A3", "PAR-RACK-B1"], to: "PAR-DOCK-OUT" },
     "Paris Bulk Zone":  { from: ["PAR-DOCK-IN"], to: ["PAR-BULK-01", "PAR-BULK-02"] },
@@ -375,7 +419,7 @@ const seed = async () => {
     const zoneConfig = pickLocations[t.zone];
     if (!zoneConfig) continue;
 
-    const numLines = 1 + Math.floor(Math.random() * 3); // 1-3 lines per task
+    const numLines = 1 + Math.floor(Math.random() * 3);
     for (let i = 0; i < numLines; i++) {
       const sku = allSkus[Math.floor(Math.random() * allSkus.length)];
       const qty = 1 + Math.floor(Math.random() * 20);
@@ -390,7 +434,6 @@ const seed = async () => {
         const toArr = Array.isArray(zoneConfig.to) ? zoneConfig.to : [zoneConfig.to];
         toLoc = toArr[Math.floor(Math.random() * toArr.length)];
       } else {
-        // count
         const locArr = zoneConfig.from;
         fromLoc = locArr[Math.floor(Math.random() * locArr.length)];
         toLoc = fromLoc;
@@ -406,7 +449,7 @@ const seed = async () => {
       `, [t.id, fromLoc, toLoc, qty, lineStatus, sku]);
     }
   }
-  console.log("  ✓ task_lines");
+  console.log("  task_lines");
 
   // ── Task Status Audit Logs ──────────────────────────────────
   for (const t of taskIds) {
@@ -434,9 +477,9 @@ const seed = async () => {
       `, [t.id, tr.from, tr.to, tr.version, t.operator]);
     }
   }
-  console.log("  ✓ task_status_audit_logs");
+  console.log("  task_status_audit_logs");
 
-  // ── Labor Daily Metrics (last 7 days for all operators) ─────
+  // ── Labor Daily Metrics (14 days for all operators) ─────────
   const metricOperators = [
     { id: "a0000000-0000-4000-a000-000000000001", avgTasks: 12, avgUnits: 85,  avgTime: 98,  avgUtil: 88 },
     { id: "a0000000-0000-4000-a000-000000000002", avgTasks: 10, avgUnits: 70,  avgTime: 105, avgUtil: 82 },
@@ -451,9 +494,8 @@ const seed = async () => {
   ];
 
   for (const op of metricOperators) {
-    for (let d = 1; d <= 7; d++) {
-      // Add some variance
-      const variance = () => 0.8 + Math.random() * 0.4; // 0.8–1.2
+    for (let d = 1; d <= 14; d++) {
+      const variance = () => 0.8 + Math.random() * 0.4;
       await query(`
         INSERT INTO labor_daily_metrics (operator_id, date, tasks_completed, units_processed, avg_task_time, utilization_percent)
         VALUES ($1, CURRENT_DATE - $2::int, $3, $4, $5, $6)
@@ -468,24 +510,38 @@ const seed = async () => {
       ]);
     }
   }
-  console.log("  ✓ labor_daily_metrics (7 days)");
+  console.log("  labor_daily_metrics (14 days)");
 
-  // ── Task Generation Events ──────────────────────────────────
-  await query(`
-    INSERT INTO task_generation_events (event_key, event_type, source_document_id, payload) VALUES
-      ('evt-so-20260201-001', 'sales_order_ready_for_pick', 'SO-20260201-001', '{"orderId": "SO-20260201-001", "lines": [{"sku": "SKU-1001", "qty": 5}, {"sku": "SKU-2001", "qty": 10}]}'),
-      ('evt-so-20260201-002', 'sales_order_ready_for_pick', 'SO-20260201-002', '{"orderId": "SO-20260201-002", "lines": [{"sku": "SKU-1002", "qty": 3}]}'),
-      ('evt-po-20260202-001', 'purchase_order_received',    'PO-20260202-001', '{"poId": "PO-20260202-001", "lines": [{"sku": "SKU-2003", "qty": 20}]}'),
-      ('evt-so-20260205-001', 'sales_order_ready_for_pick', 'SO-20260205-001', '{"orderId": "SO-20260205-001", "lines": [{"sku": "SKU-1001", "qty": 8}]}'),
-      ('evt-po-20260207-001', 'purchase_order_received',    'PO-20260207-001', '{"poId": "PO-20260207-001", "lines": [{"sku": "SKU-2003", "qty": 15}]}'),
-      ('evt-so-20260208-001', 'sales_order_ready_for_pick', 'SO-20260208-001', '{"orderId": "SO-20260208-001", "lines": [{"sku": "SKU-3001", "qty": 25}]}'),
-      ('evt-so-20260209-001', 'sales_order_ready_for_pick', 'SO-20260209-001', '{"orderId": "SO-20260209-001", "lines": [{"sku": "SKU-3003", "qty": 12}]}'),
-      ('evt-po-20260210-001', 'purchase_order_received',    'PO-20260210-001', '{"poId": "PO-20260210-001", "lines": [{"sku": "SKU-2004", "qty": 30}]}'),
-      ('evt-po-20260226-001', 'purchase_order_received',    'PO-20260226-001', '{"poId": "PO-20260226-001", "lines": [{"sku": "SKU-1004", "qty": 50}, {"sku": "SKU-2005", "qty": 100}]}'),
-      ('evt-so-20260227-001', 'sales_order_ready_for_pick', 'SO-20260227-001', '{"orderId": "SO-20260227-001", "lines": [{"sku": "SKU-1001", "qty": 15}, {"sku": "SKU-2007", "qty": 20}]}')
-    ON CONFLICT (event_key) DO NOTHING
-  `);
-  console.log("  ✓ task_generation_events");
+  // ── Task Generation Events (simulating past OMS orders) ─────
+  const orderEvents = [];
+  for (let d = 14; d >= 0; d--) {
+    const numOrders = 2 + Math.floor(Math.random() * 4); // 2-5 orders per day
+    for (let i = 0; i < numOrders; i++) {
+      const isSales = Math.random() < 0.6;
+      const dateStr = new Date(Date.now() - d * 86400000).toISOString().split("T")[0].replace(/-/g, "");
+      const key = `evt-${isSales ? "so" : "po"}-${dateStr}-${String(i + 1).padStart(3, "0")}`;
+      const docId = `${isSales ? "SO" : "PO"}-${dateStr}-${String(i + 1).padStart(3, "0")}`;
+      const eventType = isSales ? "sales_order_ready_for_pick" : "purchase_order_received";
+
+      const numLines = 1 + Math.floor(Math.random() * 3);
+      const lines = [];
+      for (let li = 0; li < numLines; li++) {
+        const sku = allSkus[Math.floor(Math.random() * allSkus.length)];
+        lines.push({ sku, qty: 1 + Math.floor(Math.random() * 25) });
+      }
+
+      orderEvents.push([key, eventType, docId, JSON.stringify({ orderId: docId, lines })]);
+    }
+  }
+
+  for (const [key, eventType, docId, payload] of orderEvents) {
+    await query(`
+      INSERT INTO task_generation_events (event_key, event_type, source_document_id, payload)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (event_key) DO NOTHING
+    `, [key, eventType, docId, payload]);
+  }
+  console.log(`  task_generation_events (${orderEvents.length} historical OMS orders)`);
 
   console.log("Test data seed complete.");
 };
