@@ -381,17 +381,6 @@ const manualAssignTask = async (taskId, operatorId) => {
       throw createHttpError(404, "Operator not found");
     }
 
-    // Enforce: only one active task per operator (assigned, in_progress, or paused)
-    const activeTaskCheck = await client.query(
-      `SELECT id FROM tasks
-       WHERE assigned_operator_id = $1
-         AND status = ANY($2::task_status[])`,
-      [operatorId, ["assigned", "in_progress", "paused"]]
-    );
-    if (activeTaskCheck.rowCount > 0) {
-      throw createHttpError(409, "Operator already has an active task. It must be completed or cancelled first.");
-    }
-
     const currentTaskResult = await client.query(`${TASK_SELECT_SQL} WHERE t.id = $1 FOR UPDATE`, [taskId]);
     if (currentTaskResult.rowCount === 0) {
       throw createHttpError(404, "Task not found");

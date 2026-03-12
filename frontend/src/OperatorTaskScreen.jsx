@@ -442,8 +442,7 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
         const allTasks = [];
 
         for (const status of ACTIVE_STATUS_ORDER) {
-          // Only fetch 1 assigned (pending) task at a time
-          const limit = status === "assigned" ? 1 : 50;
+          const limit = 50;
           const query = toQueryString({
             status,
             operator_id: operatorId,
