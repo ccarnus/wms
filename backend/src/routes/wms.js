@@ -1,5 +1,6 @@
 const express = require("express");
 const { pool, query } = require("../db");
+const { publishRealtimeEvent } = require("../realtime/eventBus");
 
 const router = express.Router();
 
@@ -244,6 +245,12 @@ router.post("/movements", async (req, res, next) => {
 
     await client.query("COMMIT");
     inTransaction = false;
+
+    await publishRealtimeEvent({
+      type: "INVENTORY_UPDATED",
+      payload: { movementId: movementInsert.rows[0].id, movementType }
+    });
+
     res.status(201).json(movementInsert.rows[0]);
   } catch (error) {
     if (inTransaction) {

@@ -1,11 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { io } from "socket.io-client";
 
 const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
 const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const apiDisplayUrl = apiBaseUrl || "same-origin (/api)";
 const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
 
-const POLLING_INTERVAL_MS = 10000;
+const getSocketBaseUrl = () => {
+  if (!apiBaseUrl) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(apiBaseUrl, window.location.origin);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch (_error) {
+    return undefined;
+  }
+};
 
 const movementTypeClassNameMap = {
   INBOUND: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -57,9 +68,7 @@ async function fetchJson(path, jwtToken = "", onAuthError = null) {
 
 function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const [summary, setSummary] = useState(null);
   const [inventoryRows, setInventoryRows] = useState([]);
@@ -69,9 +78,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [lowStockThreshold, setLowStockThreshold] = useState(20);
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
-    if (silent) {
-      setIsRefreshing(true);
-    } else {
+    if (!silent) {
       setIsLoading(true);
     }
 
@@ -87,13 +94,11 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       setInventoryRows(Array.isArray(inventoryResponse) ? inventoryResponse : []);
       setProductRows(Array.isArray(productsResponse) ? productsResponse : []);
       setMovementRows(Array.isArray(movementsResponse) ? movementsResponse : []);
-      setLastUpdatedAt(new Date());
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error.message || "Failed to load inventory dashboard");
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   }, [jwtToken, onAuthError]);
 
@@ -102,12 +107,29 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   }, [loadDashboardData]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      loadDashboardData({ silent: true });
-    }, POLLING_INTERVAL_MS);
+    if (!jwtToken) {
+      return () => {};
+    }
 
-    return () => window.clearInterval(intervalId);
-  }, [loadDashboardData]);
+    const socket = io(getSocketBaseUrl(), {
+      auth: { token: jwtToken }
+    });
+
+    socket.on("connect_error", (error) => {
+      const msg = error.message || "Realtime connection failed";
+      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
+        if (onAuthError) onAuthError();
+      }
+    });
+
+    socket.on("INVENTORY_UPDATED", () => {
+      loadDashboardData({ silent: true });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [loadDashboardData, jwtToken, onAuthError]);
 
   const kpis = useMemo(() => {
     const lowThreshold = Math.max(0, Number(lowStockThreshold) || 0);
@@ -243,21 +265,9 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
         <header className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Inventory Control</p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-2">
             <h1 className="text-2xl font-black sm:text-3xl">Inventory Dashboard</h1>
-            <button
-              type="button"
-              className="rounded-lg border border-black/15 bg-canvas px-3 py-2 text-xs font-semibold"
-              onClick={() => loadDashboardData()}
-              disabled={isLoading || isRefreshing}
-            >
-              {isRefreshing ? "Refreshing..." : "Refresh now"}
-            </button>
           </div>
-          <p className="mt-2 text-xs text-black/60">API: {apiDisplayUrl}</p>
-          <p className="mt-1 text-xs text-black/60">
-            {lastUpdatedAt ? `Last updated ${lastUpdatedAt.toLocaleTimeString()}` : "Waiting for first refresh"}
-          </p>
         </header>
 
         {errorMessage && (

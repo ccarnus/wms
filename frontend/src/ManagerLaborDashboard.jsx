@@ -3,7 +3,6 @@ import { io } from "socket.io-client";
 
 const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
 const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const apiDisplayUrl = apiBaseUrl || "same-origin (/api)";
 const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
 
 const operatorStatusClassNameMap = {
@@ -12,7 +11,6 @@ const operatorStatusClassNameMap = {
   offline: "border-slate-300 bg-slate-100 text-slate-700"
 };
 
-const POLLING_INTERVAL_MS = 10000;
 const PAGE_SIZE = 10;
 
 const getSocketBaseUrl = () => {
@@ -25,36 +23,6 @@ const getSocketBaseUrl = () => {
     return `${parsed.protocol}//${parsed.host}`;
   } catch (_error) {
     return undefined;
-  }
-};
-
-const getInitialStoredValue = (key, fallbackValue = "") => {
-  if (typeof window === "undefined") {
-    return fallbackValue;
-  }
-
-  let storedValue = null;
-  try {
-    storedValue = window.localStorage.getItem(key);
-  } catch (_error) {
-    return fallbackValue;
-  }
-
-  if (!storedValue) {
-    return fallbackValue;
-  }
-  return storedValue;
-};
-
-const persistStoredValue = (key, value) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (_error) {
-    // Ignore storage failures.
   }
 };
 
@@ -127,15 +95,8 @@ const getHeatCellStyle = (value, maxValue) => {
 };
 
 function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
-  const [refreshMode, setRefreshMode] = useState(() =>
-    getInitialStoredValue("wms.manager.refreshMode", "websocket")
-  );
-  const [socketState, setSocketState] = useState("disconnected");
-
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const [overview, setOverview] = useState(null);
   const [operatorRows, setOperatorRows] = useState([]);
@@ -147,9 +108,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   const [taskPage, setTaskPage] = useState(1);
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
-    if (silent) {
-      setIsRefreshing(true);
-    } else {
+    if (!silent) {
       setIsLoading(true);
     }
 
@@ -165,13 +124,11 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
       setOperatorRows(Array.isArray(operatorResponse?.items) ? operatorResponse.items : []);
       setZoneRows(Array.isArray(zoneResponse?.items) ? zoneResponse.items : []);
       setPendingTasks(Array.isArray(pendingResponse?.items) ? pendingResponse.items : []);
-      setLastUpdatedAt(new Date());
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error.message || "Failed to load labor dashboard");
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   }, [jwtToken, onAuthError]);
 
@@ -213,33 +170,10 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   }, [loadDashboardData]);
 
   useEffect(() => {
-    persistStoredValue("wms.manager.refreshMode", refreshMode);
-  }, [refreshMode]);
-
-  useEffect(() => {
-    if (refreshMode !== "polling") {
-      return () => {};
-    }
-
-    const intervalId = window.setInterval(() => {
-      loadDashboardData({ silent: true });
-    }, POLLING_INTERVAL_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [loadDashboardData, refreshMode]);
-
-  useEffect(() => {
-    if (refreshMode !== "websocket") {
-      setSocketState("disconnected");
-      return () => {};
-    }
-
     if (!jwtToken) {
-      setSocketState("missing_token");
       return () => {};
     }
 
-    setSocketState("connecting");
     const socket = io(getSocketBaseUrl(), {
       auth: { token: jwtToken }
     });
@@ -248,16 +182,11 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
       loadDashboardData({ silent: true });
     };
 
-    socket.on("connect", () => setSocketState("connected"));
-    socket.on("disconnect", () => setSocketState("disconnected"));
     socket.on("connect_error", (error) => {
-      setSocketState("error");
       const msg = error.message || "Realtime connection failed";
       if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
         if (onAuthError) onAuthError();
-        return;
       }
-      setErrorMessage(msg);
     });
 
     socket.on("TASK_ASSIGNED", refreshFromSocketEvent);
@@ -267,7 +196,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
     return () => {
       socket.disconnect();
     };
-  }, [loadDashboardData, jwtToken, refreshMode]);
+  }, [loadDashboardData, jwtToken, onAuthError]);
 
   const kpis = useMemo(() => {
     const activeTasks =
@@ -328,48 +257,10 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
         <header className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Manager Console</p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-2">
             <h1 className="text-2xl font-black sm:text-3xl">Labor Dashboard</h1>
-            <button
-              type="button"
-              className="rounded-lg border border-black/15 bg-canvas px-3 py-2 text-xs font-semibold"
-              onClick={() => loadDashboardData()}
-              disabled={isLoading || isRefreshing}
-            >
-              {isRefreshing ? "Refreshing..." : "Refresh now"}
-            </button>
           </div>
-          <p className="mt-2 text-xs text-black/60">API: {apiDisplayUrl}</p>
-          <p className="mt-1 text-xs text-black/60">
-            {lastUpdatedAt ? `Last updated ${lastUpdatedAt.toLocaleTimeString()}` : "Waiting for first refresh"}
-          </p>
         </header>
-
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-black/70">Realtime Mode</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                refreshMode === "polling" ? "bg-ink text-white" : "border border-black/15 bg-canvas text-black/70"
-              }`}
-              onClick={() => setRefreshMode("polling")}
-            >
-              Polling (10s)
-            </button>
-            <button
-              type="button"
-              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                refreshMode === "websocket" ? "bg-ink text-white" : "border border-black/15 bg-canvas text-black/70"
-              }`}
-              onClick={() => setRefreshMode("websocket")}
-            >
-              WebSocket
-            </button>
-          </div>
-
-          <p className="mt-3 text-xs text-black/60">Socket status: {socketState}</p>
-        </section>
 
         {errorMessage && (
           <section className="rounded-xl border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal">
