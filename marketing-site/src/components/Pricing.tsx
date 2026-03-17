@@ -37,12 +37,12 @@ export function Pricing() {
 
             <ul className="mt-8 space-y-4">
               {[
-                "Full WMS platform access",
+                "Cloud-based",
                 "Up to 20 users (managers & operators)",
                 "Real-time task orchestration",
                 "Live inventory tracking",
                 "Labor performance analytics",
-                "Unlimited webhook integrations",
+                "Unlimited integrations",
                 "Dedicated onboarding in 1 week",
                 "Email & chat support",
               ].map((feature) => (

@@ -3,7 +3,7 @@ const FOOTER_LINKS = {
     { label: "Features", href: "#features" },
     { label: "Architecture", href: "#architecture" },
     { label: "Integrations", href: "#features" },
-    { label: "Security", href: "#" },
+    { label: "Security", href: "/security" },
   ],
   Company: [
     { label: "About", href: "#" },
