@@ -12,7 +12,6 @@
     "test": "node test/taskGenerationLogic.test.js && node test/laborMetricsAggregationService.test.js",
     "seed:users": "node src/scripts/seedUsers.js",
     "seed:testdata": "node src/scripts/seedTestData.js",
-    "simulate": "node src/scripts/simulateActivity.js",
     "worker:integrations": "node src/workers/integrationWorker.js"
   },
   "dependencies": {

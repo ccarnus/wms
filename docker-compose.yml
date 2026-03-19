@@ -179,23 +179,6 @@ services:
     networks:
       - wms-net
 
-  simulator:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    command: ["npm", "run", "simulate"]
-    environment:
-      NODE_ENV: production
-      SEED_TEST_DATA: ${SEED_TEST_DATA:-false}
-      SIM_API_BASE_URL: http://backend:3000
-      SIM_ORDER_INTERVAL_MS: ${SIM_ORDER_INTERVAL_MS:-20000}
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - wms-net
-
   frontend:
     build:
       context: ./frontend
