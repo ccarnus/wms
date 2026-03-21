@@ -14,11 +14,19 @@ export function CTA() {
 
           <div className="mx-auto mt-10 max-w-md">
             <form
-              action="#"
+              action="https://formsubmit.co/carnus.clement@gmail.com"
+              method="POST"
               className="flex flex-col gap-3 sm:flex-row"
             >
+              <input type="hidden" name="_cc" value="claytoneverhartb@gmail.com" />
+              <input type="hidden" name="_subject" value="New Greenlights Demo Request" />
+              <input type="hidden" name="_captcha" value="false" />
+              <input type="hidden" name="_next" value="https://greenlights.us/#demo" />
+              <input type="hidden" name="_template" value="table" />
               <input
                 type="email"
+                name="email"
+                required
                 placeholder="Enter your work email"
                 className="flex-1 rounded-xl border border-gray-700 bg-gray-800 px-5 py-3.5 text-sm text-white placeholder-gray-500 outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
               />

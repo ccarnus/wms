@@ -58,7 +58,7 @@ export function Hero() {
         <div className="mx-auto mt-16 max-w-3xl sm:mt-20">
           <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-2xl shadow-gray-900/10">
             <img
-              src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&q=80&auto=format&fit=crop"
+              src="/images/hero-warehouse.jpg"
               alt="Small business owner preparing packages at a fulfillment desk"
               className="h-auto w-full object-cover"
               width={800}

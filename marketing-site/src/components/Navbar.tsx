@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 const NAV_LINKS = [
-  { label: "Features", href: "#features" },
-  { label: "Integrations", href: "#connectors" },
-  { label: "Architecture", href: "#architecture" },
-  { label: "Pricing", href: "#pricing" },
+  { label: "Features", href: "/#features" },
+  { label: "Integrations", href: "/#connectors" },
+  { label: "Architecture", href: "/#architecture" },
+  { label: "Pricing", href: "/#pricing" },
+  { label: "Security", href: "/security" },
 ];
 
 export function Navbar() {

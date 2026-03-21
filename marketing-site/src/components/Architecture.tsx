@@ -51,9 +51,10 @@ export function Architecture() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <div className="mx-auto mt-12 max-w-2xl overflow-hidden rounded-2xl">
           <img
-            src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80&auto=format&fit=crop"
+            src="/images/architecture-dashboard.jpg"
             alt="Clean analytics dashboard showing business metrics"
             className="h-52 w-full object-cover"
+            loading="lazy"
             width={800}
             height={208}
           />

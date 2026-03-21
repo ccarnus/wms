@@ -4,31 +4,31 @@ const CONNECTORS = [
   {
     name: "SAP",
     desc: "ERP integration for orders, inventory sync, and fulfillment updates.",
-    logo: "https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/sap.svg",
+    logo: "/images/sap.svg",
     bgColor: "bg-[#0FAAFF]",
   },
   {
     name: "Shopify",
     desc: "Sync orders, products, and inventory levels with your storefront.",
-    logo: "https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/shopify.svg",
+    logo: "/images/shopify.svg",
     bgColor: "bg-[#7AB55C]",
   },
   {
     name: "Oracle",
     desc: "Connect to Oracle ERP Cloud for procurement and warehouse operations.",
-    logo: "https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/oracle.svg",
+    logo: "/images/oracle.svg",
     bgColor: "bg-[#F80000]",
   },
   {
     name: "QuickBooks",
     desc: "Accounting and inventory sync for small-to-medium operations.",
-    logo: "https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/quickbooks.svg",
+    logo: "/images/quickbooks.svg",
     bgColor: "bg-[#2CA01C]",
   },
   {
     name: "WooCommerce",
     desc: "Real-time order import and stock updates for WordPress stores.",
-    logo: "https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/woocommerce.svg",
+    logo: "/images/woocommerce.svg",
     bgColor: "bg-[#96588A]",
   },
   {

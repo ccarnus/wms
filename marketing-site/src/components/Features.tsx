@@ -129,27 +129,30 @@ export function Features() {
         <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="overflow-hidden rounded-xl">
             <img
-              src="https://images.unsplash.com/photo-1556740772-1a741367b93e?w=600&q=80&auto=format&fit=crop"
+              src="/images/feature-fulfillment.jpg"
               alt="Small fulfillment workspace with parcels ready to ship"
               className="h-48 w-full object-cover"
+              loading="lazy"
               width={600}
               height={192}
             />
           </div>
           <div className="overflow-hidden rounded-xl">
             <img
-              src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600&q=80&auto=format&fit=crop"
+              src="/images/feature-stockroom.jpg"
               alt="Neatly organized shelves in a small stockroom"
               className="h-48 w-full object-cover"
+              loading="lazy"
               width={600}
               height={192}
             />
           </div>
           <div className="overflow-hidden rounded-xl">
             <img
-              src="https://images.unsplash.com/photo-1542744094-3a31f272c490?w=600&q=80&auto=format&fit=crop"
+              src="/images/feature-team.jpg"
               alt="Small team coordinating daily warehouse operations"
               className="h-48 w-full object-cover"
+              loading="lazy"
               width={600}
               height={192}
             />

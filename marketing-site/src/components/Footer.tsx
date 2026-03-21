@@ -1,21 +1,13 @@
 const FOOTER_LINKS = {
   Product: [
-    { label: "Features", href: "#features" },
-    { label: "Architecture", href: "#architecture" },
-    { label: "Integrations", href: "#features" },
-    { label: "Security", href: "/security" },
+    { label: "Features", href: "/#features" },
+    { label: "Architecture", href: "/#architecture" },
+    { label: "Integrations", href: "/#connectors" },
+    { label: "Pricing", href: "/#pricing" },
   ],
   Company: [
-    { label: "About", href: "#" },
-    { label: "Careers", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Contact", href: "#demo" },
-  ],
-  Resources: [
-    { label: "Documentation", href: "#" },
-    { label: "API Reference", href: "#" },
-    { label: "Status", href: "#" },
-    { label: "Changelog", href: "#" },
+    { label: "Security", href: "/security" },
+    { label: "Contact", href: "/#demo" },
   ],
 };
 
