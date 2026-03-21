@@ -1,0 +1,3 @@
+{$CADDY_DOMAIN:test.greenlights.us} {
+    reverse_proxy frontend:80
+}
