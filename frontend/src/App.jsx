@@ -7,6 +7,7 @@ import ManagerLaborDashboard from "./ManagerLaborDashboard";
 import OperatorTaskScreen from "./OperatorTaskScreen";
 import UserManagementScreen from "./UserManagementScreen";
 import IntegrationsScreen from "./IntegrationsScreen";
+import ConfigurationScreen from "./ConfigurationScreen";
 
 /* ── Inline SVG icons (24x24, stroke-based) ─────────────────────────── */
 
@@ -73,6 +74,15 @@ function IconIntegrations({ className }) {
   );
 }
 
+function IconConfiguration({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 function IconMenu({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -131,12 +141,18 @@ const VIEWS = [
     label: "Integrations",
     subtitle: "External system connections",
     icon: IconIntegrations
+  },
+  {
+    id: "configuration",
+    label: "Configuration",
+    subtitle: "Zones and locations",
+    icon: IconConfiguration
   }
 ];
 
 const VIEWS_BY_ROLE = {
-  admin: ["dashboard", "manager", "inventory", "users", "integrations"],
-  warehouse_manager: ["dashboard", "manager", "inventory", "users"],
+  admin: ["dashboard", "manager", "inventory", "users", "integrations", "configuration"],
+  warehouse_manager: ["dashboard", "manager", "inventory", "users", "configuration"],
   supervisor: ["dashboard", "manager", "inventory", "users"],
   operator: ["operator"],
   viewer: ["dashboard", "manager", "inventory"]
@@ -289,6 +305,9 @@ function App() {
     }
     if (view === "integrations") {
       return <IntegrationsScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
+    }
+    if (view === "configuration") {
+      return <ConfigurationScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
   })();

@@ -56,10 +56,10 @@ const resolveZoneByLocationMap = async (client, locationIds) => {
 
   const { rows } = await client.query(
     `SELECT
-      lz.location_id,
-      lz.zone_id
-    FROM location_zones lz
-    WHERE lz.location_id = ANY($1::int[])`,
+      l.id AS location_id,
+      l.zone_id
+    FROM locations l
+    WHERE l.id = ANY($1::int[])`,
     [uniqueLocationIds]
   );
 

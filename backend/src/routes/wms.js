@@ -52,26 +52,6 @@ router.get("/warehouses", async (_req, res, next) => {
   }
 });
 
-router.get("/locations", async (_req, res, next) => {
-  try {
-    const { rows } = await query(
-      `SELECT
-        l.id,
-        l.code,
-        l.name,
-        w.id AS "warehouseId",
-        w.code AS "warehouseCode",
-        w.name AS "warehouseName"
-      FROM locations l
-      INNER JOIN warehouses w ON w.id = l.warehouse_id
-      ORDER BY w.code, l.code`
-    );
-    res.json(rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get("/products", async (_req, res, next) => {
   try {
     const { rows } = await query(

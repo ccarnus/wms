@@ -37,34 +37,66 @@ const seed = async () => {
   const { rows: warehouses } = await query(`SELECT id, code FROM warehouses`);
   const whId = (code) => warehouses.find((w) => w.code === code).id;
 
-  // ── Locations ───────────────────────────────────────────────
+  // ── Zones ───────────────────────────────────────────────────
   await query(`
-    INSERT INTO locations (warehouse_id, code, name) VALUES
-      ($1, 'PAR-DOCK-IN',   'Paris Inbound Dock'),
-      ($1, 'PAR-DOCK-OUT',  'Paris Outbound Dock'),
-      ($1, 'PAR-STAGE-01',  'Paris Staging Area 1'),
-      ($1, 'PAR-STAGE-02',  'Paris Staging Area 2'),
-      ($1, 'PAR-RACK-A1',   'Paris Rack A1'),
-      ($1, 'PAR-RACK-A2',   'Paris Rack A2'),
-      ($1, 'PAR-RACK-A3',   'Paris Rack A3'),
-      ($1, 'PAR-RACK-B1',   'Paris Rack B1'),
-      ($1, 'PAR-RACK-B2',   'Paris Rack B2'),
-      ($1, 'PAR-BULK-01',   'Paris Bulk Storage 1'),
-      ($1, 'PAR-BULK-02',   'Paris Bulk Storage 2'),
-      ($2, 'LIL-DOCK-IN',   'Lille Inbound Dock'),
-      ($2, 'LIL-DOCK-OUT',  'Lille Outbound Dock'),
-      ($2, 'LIL-STAGE-01',  'Lille Staging Area 1'),
-      ($2, 'LIL-RACK-A1',   'Lille Rack A1'),
-      ($2, 'LIL-RACK-A2',   'Lille Rack A2'),
-      ($2, 'LIL-RACK-B1',   'Lille Rack B1'),
-      ($2, 'LIL-BULK-01',   'Lille Bulk Storage 1'),
-      ($3, 'LYN-DOCK-IN',   'Lyon Inbound Dock'),
-      ($3, 'LYN-DOCK-OUT',  'Lyon Outbound Dock'),
-      ($3, 'LYN-RACK-A1',   'Lyon Rack A1'),
-      ($3, 'LYN-RACK-B1',   'Lyon Rack B1'),
-      ($3, 'LYN-BULK-01',   'Lyon Bulk Storage 1')
-    ON CONFLICT (warehouse_id, code) DO NOTHING
+    INSERT INTO zones (warehouse_id, name, type) VALUES
+      ($1, 'Paris Pick Zone',     'pick'),
+      ($1, 'Paris Bulk Zone',     'bulk'),
+      ($1, 'Paris Dock Zone',     'dock'),
+      ($1, 'Paris Staging Zone',  'staging'),
+      ($2, 'Lille Pick Zone',     'pick'),
+      ($2, 'Lille Dock Zone',     'dock'),
+      ($2, 'Lille Bulk Zone',     'bulk'),
+      ($3, 'Lyon Pick Zone',      'pick'),
+      ($3, 'Lyon Dock Zone',      'dock')
+    ON CONFLICT (warehouse_id, name) DO NOTHING
   `, [whId("WH-PARIS-01"), whId("WH-LILLE-01"), whId("WH-LYON-01")]);
+  console.log("  zones");
+
+  const { rows: zones } = await query(`SELECT id, name FROM zones`);
+  const zoneId = (name) => zones.find((z) => z.name === name).id;
+
+  // ── Locations (with zone_id, status, type, capacity) ──────
+  await query(`
+    INSERT INTO locations (warehouse_id, zone_id, code, name, status, type, capacity) VALUES
+      ($1, $4,  'PAR-DOCK-IN',   'Paris Inbound Dock',    'active', 'dock',    500),
+      ($1, $4,  'PAR-DOCK-OUT',  'Paris Outbound Dock',   'active', 'dock',    500),
+      ($1, $5,  'PAR-STAGE-01',  'Paris Staging Area 1',  'active', 'staging', 300),
+      ($1, $5,  'PAR-STAGE-02',  'Paris Staging Area 2',  'active', 'staging', 300),
+      ($1, $6,  'PAR-RACK-A1',   'Paris Rack A1',         'active', 'rack',    200),
+      ($1, $6,  'PAR-RACK-A2',   'Paris Rack A2',         'active', 'rack',    200),
+      ($1, $6,  'PAR-RACK-A3',   'Paris Rack A3',         'active', 'rack',    200),
+      ($1, $6,  'PAR-RACK-B1',   'Paris Rack B1',         'active', 'rack',    200),
+      ($1, $6,  'PAR-RACK-B2',   'Paris Rack B2',         'active', 'rack',    200),
+      ($1, $7,  'PAR-BULK-01',   'Paris Bulk Storage 1',  'active', 'floor',   1000),
+      ($1, $7,  'PAR-BULK-02',   'Paris Bulk Storage 2',  'active', 'floor',   1000),
+      ($2, $9,  'LIL-DOCK-IN',   'Lille Inbound Dock',    'active', 'dock',    400),
+      ($2, $9,  'LIL-DOCK-OUT',  'Lille Outbound Dock',   'active', 'dock',    400),
+      ($2, $8,  'LIL-STAGE-01',  'Lille Staging Area 1',  'active', 'staging', 250),
+      ($2, $8,  'LIL-RACK-A1',   'Lille Rack A1',         'active', 'rack',    150),
+      ($2, $8,  'LIL-RACK-A2',   'Lille Rack A2',         'active', 'rack',    150),
+      ($2, $8,  'LIL-RACK-B1',   'Lille Rack B1',         'active', 'rack',    150),
+      ($2, $10, 'LIL-BULK-01',   'Lille Bulk Storage 1',  'active', 'floor',   800),
+      ($3, $12, 'LYN-DOCK-IN',   'Lyon Inbound Dock',     'active', 'dock',    300),
+      ($3, $12, 'LYN-DOCK-OUT',  'Lyon Outbound Dock',    'active', 'dock',    300),
+      ($3, $11, 'LYN-RACK-A1',   'Lyon Rack A1',          'active', 'rack',    150),
+      ($3, $11, 'LYN-RACK-B1',   'Lyon Rack B1',          'active', 'rack',    150),
+      ($3, $11, 'LYN-BULK-01',   'Lyon Bulk Storage 1',   'active', 'floor',   600)
+    ON CONFLICT (warehouse_id, code) DO NOTHING
+  `, [
+    whId("WH-PARIS-01"),                // $1
+    whId("WH-LILLE-01"),                // $2
+    whId("WH-LYON-01"),                 // $3
+    zoneId("Paris Dock Zone"),          // $4
+    zoneId("Paris Staging Zone"),       // $5
+    zoneId("Paris Pick Zone"),          // $6
+    zoneId("Paris Bulk Zone"),          // $7
+    zoneId("Lille Pick Zone"),          // $8
+    zoneId("Lille Dock Zone"),          // $9
+    zoneId("Lille Bulk Zone"),          // $10
+    zoneId("Lyon Pick Zone"),           // $11
+    zoneId("Lyon Dock Zone"),           // $12
+  ]);
   console.log("  locations");
 
   // ── Products ────────────────────────────────────────────────
@@ -183,65 +215,6 @@ const seed = async () => {
     `, [sku, fromLoc, toLoc, qty, mtype, ref, daysAgo]);
   }
   console.log("  movements (30-day history)");
-
-  // ── Zones ───────────────────────────────────────────────────
-  await query(`
-    INSERT INTO zones (warehouse_id, name, type) VALUES
-      ($1, 'Paris Pick Zone',     'pick'),
-      ($1, 'Paris Bulk Zone',     'bulk'),
-      ($1, 'Paris Dock Zone',     'dock'),
-      ($1, 'Paris Staging Zone',  'staging'),
-      ($2, 'Lille Pick Zone',     'pick'),
-      ($2, 'Lille Dock Zone',     'dock'),
-      ($2, 'Lille Bulk Zone',     'bulk'),
-      ($3, 'Lyon Pick Zone',      'pick'),
-      ($3, 'Lyon Dock Zone',      'dock')
-    ON CONFLICT (warehouse_id, name) DO NOTHING
-  `, [whId("WH-PARIS-01"), whId("WH-LILLE-01"), whId("WH-LYON-01")]);
-  console.log("  zones");
-
-  const { rows: zones } = await query(`SELECT id, name FROM zones`);
-  const zoneId = (name) => zones.find((z) => z.name === name).id;
-
-  // ── Location -> Zone mapping ────────────────────────────────
-  await query(`
-    INSERT INTO location_zones (location_id, zone_id)
-    SELECT l.id, s.zone_id
-    FROM (VALUES
-      ('PAR-RACK-A1',  $1::uuid),
-      ('PAR-RACK-A2',  $1::uuid),
-      ('PAR-RACK-A3',  $1::uuid),
-      ('PAR-RACK-B1',  $1::uuid),
-      ('PAR-RACK-B2',  $1::uuid),
-      ('PAR-BULK-01',  $2::uuid),
-      ('PAR-BULK-02',  $2::uuid),
-      ('PAR-DOCK-IN',  $3::uuid),
-      ('PAR-DOCK-OUT', $3::uuid),
-      ('PAR-STAGE-01', $4::uuid),
-      ('PAR-STAGE-02', $4::uuid),
-      ('LIL-RACK-A1',  $5::uuid),
-      ('LIL-RACK-A2',  $5::uuid),
-      ('LIL-RACK-B1',  $5::uuid),
-      ('LIL-DOCK-IN',  $6::uuid),
-      ('LIL-DOCK-OUT', $6::uuid),
-      ('LIL-BULK-01',  $7::uuid),
-      ('LIL-STAGE-01', $5::uuid),
-      ('LYN-RACK-A1',  $8::uuid),
-      ('LYN-RACK-B1',  $8::uuid),
-      ('LYN-DOCK-IN',  $9::uuid),
-      ('LYN-DOCK-OUT', $9::uuid),
-      ('LYN-BULK-01',  $8::uuid)
-    ) AS s(loc_code, zone_id)
-    JOIN locations l ON l.code = s.loc_code
-    ON CONFLICT (location_id) DO NOTHING
-  `, [
-    zoneId("Paris Pick Zone"), zoneId("Paris Bulk Zone"),
-    zoneId("Paris Dock Zone"), zoneId("Paris Staging Zone"),
-    zoneId("Lille Pick Zone"), zoneId("Lille Dock Zone"),
-    zoneId("Lille Bulk Zone"),
-    zoneId("Lyon Pick Zone"), zoneId("Lyon Dock Zone")
-  ]);
-  console.log("  location_zones");
 
   // ── Operators ───────────────────────────────────────────────
   await query(`

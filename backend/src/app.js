@@ -13,6 +13,8 @@ const laborRoutes = require("./routes/labor");
 const usersRoutes = require("./routes/users");
 const integrationsRoutes = require("./routes/integrations");
 const integrationWebhookRoutes = require("./routes/integrationWebhook");
+const zonesRoutes = require("./routes/zones");
+const locationsRoutes = require("./routes/locations");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -53,7 +55,11 @@ app.get("/", (_req, res) => {
       "/api/auth/change-password",
       "/api/integrations",
       "/api/integrations/connector-types",
-      "/api/webhook/:connectorType"
+      "/api/webhook/:connectorType",
+      "/api/zones",
+      "/api/zones/:id",
+      "/api/locations",
+      "/api/locations/:id"
     ]
   });
 });
@@ -71,6 +77,8 @@ app.use("/api/tasks", tasksRoutes);
 app.use("/api/labor", laborRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/integrations", integrationsRoutes);
+app.use("/api/zones", zonesRoutes);
+app.use("/api/locations", locationsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

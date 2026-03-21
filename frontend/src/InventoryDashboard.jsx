@@ -35,6 +35,26 @@ const toQueryString = (params) => {
   return query.toString();
 };
 
+async function patchJson(path, body, jwtToken = "", onAuthError = null) {
+  const headers = { "Content-Type": "application/json" };
+  if (jwtToken) {
+    headers.Authorization = `Bearer ${jwtToken}`;
+  }
+  const response = await fetch(buildApiUrl(path), {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    if (response.status === 401 && onAuthError) {
+      onAuthError();
+    }
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed: ${response.status}`);
+  }
+  return response.json();
+}
+
 const formatNumber = (value) => Number(value || 0).toLocaleString();
 
 const formatDateTime = (value) => {
@@ -75,6 +95,14 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [productRows, setProductRows] = useState([]);
   const [movementRows, setMovementRows] = useState([]);
 
+  const [locationRows, setLocationRows] = useState([]);
+  const [locFilterWarehouse, setLocFilterWarehouse] = useState("");
+  const [locFilterZone, setLocFilterZone] = useState("");
+  const [locFilterStatus, setLocFilterStatus] = useState("");
+  const [locFilterType, setLocFilterType] = useState("");
+  const [locFilterSearch, setLocFilterSearch] = useState("");
+  const [togglingId, setTogglingId] = useState(null);
+
   const [lowStockThreshold, setLowStockThreshold] = useState(20);
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
@@ -83,17 +111,19 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
     }
 
     try {
-      const [summaryResponse, inventoryResponse, productsResponse, movementsResponse] = await Promise.all([
+      const [summaryResponse, inventoryResponse, productsResponse, movementsResponse, locationsResponse] = await Promise.all([
         fetchJson("/api/summary", jwtToken, onAuthError),
         fetchJson("/api/inventory", jwtToken, onAuthError),
         fetchJson("/api/products", jwtToken, onAuthError),
-        fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken, onAuthError)
+        fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken, onAuthError),
+        fetchJson("/api/locations", jwtToken, onAuthError)
       ]);
 
       setSummary(summaryResponse || null);
       setInventoryRows(Array.isArray(inventoryResponse) ? inventoryResponse : []);
       setProductRows(Array.isArray(productsResponse) ? productsResponse : []);
       setMovementRows(Array.isArray(movementsResponse) ? movementsResponse : []);
+      setLocationRows(Array.isArray(locationsResponse) ? locationsResponse : []);
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error.message || "Failed to load inventory dashboard");
@@ -259,6 +289,40 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       .sort((left, right) => left.totalQuantity - right.totalQuantity)
       .slice(0, 10);
   }, [lowStockThreshold, productRows]);
+
+  const handleToggleStatus = useCallback(async (loc) => {
+    const newStatus = loc.status === "active" ? "locked" : "active";
+    setTogglingId(loc.id);
+    try {
+      await patchJson(`/api/locations/${loc.id}/status`, { status: newStatus }, jwtToken, onAuthError);
+      setLocationRows((prev) => prev.map((r) => r.id === loc.id ? { ...r, status: newStatus } : r));
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setTogglingId(null);
+    }
+  }, [jwtToken, onAuthError]);
+
+  const locFilterOptions = useMemo(() => {
+    const warehouses = [...new Set(locationRows.map((r) => r.warehouseCode))].sort();
+    const zones = [...new Set(locationRows.map((r) => r.zoneName))].sort();
+    const types = [...new Set(locationRows.map((r) => r.type))].sort();
+    return { warehouses, zones, types };
+  }, [locationRows]);
+
+  const filteredLocations = useMemo(() => {
+    return locationRows.filter((loc) => {
+      if (locFilterWarehouse && loc.warehouseCode !== locFilterWarehouse) return false;
+      if (locFilterZone && loc.zoneName !== locFilterZone) return false;
+      if (locFilterStatus && loc.status !== locFilterStatus) return false;
+      if (locFilterType && loc.type !== locFilterType) return false;
+      if (locFilterSearch) {
+        const q = locFilterSearch.toLowerCase();
+        if (!loc.code.toLowerCase().includes(q) && !loc.name.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [locationRows, locFilterWarehouse, locFilterZone, locFilterStatus, locFilterType, locFilterSearch]);
 
   return (
     <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
@@ -456,6 +520,117 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-black">Locations</h2>
+            <p className="text-xs text-black/60">
+              {filteredLocations.length} of {locationRows.length} location(s)
+            </p>
+          </div>
+
+          {/* Filters */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search code or name…"
+              value={locFilterSearch}
+              onChange={(e) => setLocFilterSearch(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm"
+            />
+            <select value={locFilterWarehouse} onChange={(e) => setLocFilterWarehouse(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
+              <option value="">All warehouses</option>
+              {locFilterOptions.warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
+            </select>
+            <select value={locFilterZone} onChange={(e) => setLocFilterZone(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
+              <option value="">All zones</option>
+              {locFilterOptions.zones.map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+            <select value={locFilterStatus} onChange={(e) => setLocFilterStatus(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="locked">Locked</option>
+            </select>
+            <select value={locFilterType} onChange={(e) => setLocFilterType(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
+              <option value="">All types</option>
+              {locFilterOptions.types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {(locFilterSearch || locFilterWarehouse || locFilterZone || locFilterStatus || locFilterType) && (
+              <button type="button" onClick={() => { setLocFilterSearch(""); setLocFilterWarehouse(""); setLocFilterZone(""); setLocFilterStatus(""); setLocFilterType(""); }}
+                className="text-xs font-semibold text-accent hover:underline">Clear filters</button>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={`loc-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
+              ))}
+            </div>
+          ) : filteredLocations.length === 0 ? (
+            <p className="text-sm text-black/60">No locations match the current filters.</p>
+          ) : (
+            <div className="overflow-auto">
+              <table className="min-w-[900px] w-full text-left text-sm">
+                <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
+                  <tr>
+                    <th className="px-2 py-2">Code</th>
+                    <th className="px-2 py-2">Name</th>
+                    <th className="px-2 py-2">Zone</th>
+                    <th className="px-2 py-2">Warehouse</th>
+                    <th className="px-2 py-2">Type</th>
+                    <th className="px-2 py-2 text-center">Capacity</th>
+                    <th className="px-2 py-2">Status</th>
+                    <th className="px-2 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLocations.map((loc) => (
+                    <tr key={loc.id} className="border-b border-black/10">
+                      <td className="px-2 py-2 font-mono text-xs font-semibold">{loc.code}</td>
+                      <td className="px-2 py-2">{loc.name}</td>
+                      <td className="px-2 py-2 text-black/60">{loc.zoneName}</td>
+                      <td className="px-2 py-2 text-black/60">{loc.warehouseCode}</td>
+                      <td className="px-2 py-2">
+                        <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
+                          {loc.type}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-center">{formatNumber(loc.capacity)}</td>
+                      <td className="px-2 py-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          loc.status === "active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-700"
+                        }`}>
+                          {loc.status}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          disabled={togglingId === loc.id}
+                          onClick={() => handleToggleStatus(loc)}
+                          className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                            loc.status === "active"
+                              ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                              : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          } disabled:opacity-50`}
+                        >
+                          {togglingId === loc.id ? "…" : loc.status === "active" ? "Lock" : "Activate"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
