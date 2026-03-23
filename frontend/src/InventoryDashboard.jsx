@@ -105,6 +105,15 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
   const [lowStockThreshold, setLowStockThreshold] = useState(20);
 
+  // Pagination state
+  const [locPage, setLocPage] = useState(1);
+  const [movPage, setMovPage] = useState(1);
+  const [skuPage, setSkuPage] = useState(1);
+
+  // SKU by Units filters
+  const [skuFilterSearch, setSkuFilterSearch] = useState("");
+  const [skuFilterWarehouse, setSkuFilterWarehouse] = useState("");
+
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setIsLoading(true);
@@ -115,7 +124,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
         fetchJson("/api/summary", jwtToken, onAuthError),
         fetchJson("/api/inventory", jwtToken, onAuthError),
         fetchJson("/api/skus", jwtToken, onAuthError),
-        fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken, onAuthError),
+        fetchJson(`/api/movements?${toQueryString({ limit: 100 })}`, jwtToken, onAuthError),
         fetchJson("/api/locations", jwtToken, onAuthError)
       ]);
 
@@ -244,7 +253,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       .sort((left, right) => right.totalUnits - left.totalUnits);
   }, [inventoryRows]);
 
-  const topSkuRows = useMemo(() => {
+  const allSkuRows = useMemo(() => {
     const aggregationMap = new Map();
 
     for (const row of inventoryRows) {
@@ -272,11 +281,27 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
         skuDescription: row.skuDescription,
         totalUnits: row.totalUnits,
         locationCount: row.locationSet.size,
-        warehouseCount: row.warehouseSet.size
+        warehouseCount: row.warehouseSet.size,
+        warehouses: row.warehouseSet
       }))
-      .sort((left, right) => right.totalUnits - left.totalUnits)
-      .slice(0, 8);
+      .sort((left, right) => right.totalUnits - left.totalUnits);
   }, [inventoryRows]);
+
+  const skuFilterOptions = useMemo(() => {
+    const warehouses = [...new Set(inventoryRows.map((r) => r.warehouseCode))].sort();
+    return { warehouses };
+  }, [inventoryRows]);
+
+  const filteredSkuRows = useMemo(() => {
+    return allSkuRows.filter((row) => {
+      if (skuFilterWarehouse && !row.warehouses.has(skuFilterWarehouse)) return false;
+      if (skuFilterSearch) {
+        const q = skuFilterSearch.toLowerCase();
+        if (!row.sku.toLowerCase().includes(q) && !(row.skuDescription || "").toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [allSkuRows, skuFilterWarehouse, skuFilterSearch]);
 
   const lowStockRows = useMemo(() => {
     const threshold = Math.max(0, Number(lowStockThreshold) || 0);
@@ -323,6 +348,37 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       return true;
     });
   }, [locationRows, locFilterWarehouse, locFilterZone, locFilterStatus, locFilterType, locFilterSearch]);
+
+  // Reset pagination when filters change
+  useEffect(() => { setLocPage(1); }, [locFilterWarehouse, locFilterZone, locFilterStatus, locFilterType, locFilterSearch]);
+  useEffect(() => { setSkuPage(1); }, [skuFilterSearch, skuFilterWarehouse]);
+
+  // Pagination helpers
+  const LOC_PER_PAGE = 15;
+  const MOV_PER_PAGE = 10;
+  const SKU_PER_PAGE = 15;
+
+  const locTotalPages = Math.max(1, Math.ceil(filteredLocations.length / LOC_PER_PAGE));
+  const pagedLocations = filteredLocations.slice((locPage - 1) * LOC_PER_PAGE, locPage * LOC_PER_PAGE);
+
+  const movTotalPages = Math.max(1, Math.ceil(movementRows.length / MOV_PER_PAGE));
+  const pagedMovements = movementRows.slice((movPage - 1) * MOV_PER_PAGE, movPage * MOV_PER_PAGE);
+
+  const skuTotalPages = Math.max(1, Math.ceil(filteredSkuRows.length / SKU_PER_PAGE));
+  const pagedSkuRows = filteredSkuRows.slice((skuPage - 1) * SKU_PER_PAGE, skuPage * SKU_PER_PAGE);
+
+  const PaginationControls = ({ page, totalPages, setPage, totalItems, label }) => (
+    <div className="mt-3 flex items-center justify-between text-xs text-black/60">
+      <p>{totalItems} {label}</p>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}
+          className="rounded-lg border border-black/15 px-2 py-1 hover:bg-canvas disabled:opacity-40">Prev</button>
+        <span>Page {page} of {totalPages}</span>
+        <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)}
+          className="rounded-lg border border-black/15 px-2 py-1 hover:bg-canvas disabled:opacity-40">Next</button>
+      </div>
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
@@ -434,98 +490,77 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
               </ul>
             )}
           </article>
-
-          <article className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-black">Top SKUs by Units</h2>
-              <p className="text-xs text-black/60">Top {topSkuRows.length}</p>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={`top-sku-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
-                ))}
-              </div>
-            ) : topSkuRows.length === 0 ? (
-              <p className="text-sm text-black/60">No inventory rows found.</p>
-            ) : (
-              <ul className="space-y-2">
-                {topSkuRows.map((row) => (
-                  <li key={row.skuId} className="rounded-xl border border-black/10 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">
-                        {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
-                      </p>
-                      <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
-                        {formatNumber(row.totalUnits)} units
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-black/60">
-                      {formatNumber(row.locationCount)} location(s), {formatNumber(row.warehouseCount)} warehouse(s)
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
         </section>
 
+        {/* SKU by Units — filtered & paginated table */}
         <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Recent Movements</h2>
-            <p className="text-xs text-black/60">Last {movementRows.length} records</p>
+            <h2 className="text-lg font-black">SKU by Units</h2>
+            <p className="text-xs text-black/60">
+              {filteredSkuRows.length} of {allSkuRows.length} SKU(s)
+            </p>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search SKU or description…"
+              value={skuFilterSearch}
+              onChange={(e) => setSkuFilterSearch(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm"
+            />
+            <select value={skuFilterWarehouse} onChange={(e) => setSkuFilterWarehouse(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
+              <option value="">All warehouses</option>
+              {skuFilterOptions.warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
+            </select>
+            {(skuFilterSearch || skuFilterWarehouse) && (
+              <button type="button" onClick={() => { setSkuFilterSearch(""); setSkuFilterWarehouse(""); }}
+                className="text-xs font-semibold text-accent hover:underline">Clear filters</button>
+            )}
           </div>
 
           {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`movement-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
+                <div key={`sku-units-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
               ))}
             </div>
-          ) : movementRows.length === 0 ? (
-            <p className="text-sm text-black/60">No recent movement found.</p>
+          ) : filteredSkuRows.length === 0 ? (
+            <p className="text-sm text-black/60">No SKU matches the current filters.</p>
           ) : (
-            <div className="overflow-auto">
-              <table className="min-w-[840px] w-full text-left text-sm">
-                <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                  <tr>
-                    <th className="px-2 py-2">When</th>
-                    <th className="px-2 py-2">SKU</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">From</th>
-                    <th className="px-2 py-2">To</th>
-                    <th className="px-2 py-2">Qty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movementRows.map((row) => {
-                    const badgeClassName =
-                      movementTypeClassNameMap[row.movementType] || "border-slate-300 bg-slate-100 text-slate-700";
-
-                    return (
-                      <tr key={row.id} className="border-b border-black/10">
-                        <td className="px-2 py-2 whitespace-nowrap">{formatDateTime(row.createdAt)}</td>
-                        <td className="px-2 py-2">
-                          {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
-                        </td>
-                        <td className="px-2 py-2">
-                          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClassName}`}>
-                            {row.movementType}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2">{row.fromLocationCode || "-"}</td>
-                        <td className="px-2 py-2">{row.toLocationCode || "-"}</td>
-                        <td className="px-2 py-2 font-semibold">{formatNumber(row.quantity)}</td>
+            <>
+              <div className="overflow-auto">
+                <table className="min-w-[700px] w-full text-left text-sm">
+                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
+                    <tr>
+                      <th className="px-2 py-2">SKU</th>
+                      <th className="px-2 py-2">Description</th>
+                      <th className="px-2 py-2">Locations</th>
+                      <th className="px-2 py-2">Warehouses</th>
+                      <th className="px-2 py-2 text-right">Total Units</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedSkuRows.map((row) => (
+                      <tr key={row.skuId} className="border-b border-black/10">
+                        <td className="px-2 py-2 font-mono text-xs font-semibold">{row.sku}</td>
+                        <td className="px-2 py-2 text-black/60">{row.skuDescription || "-"}</td>
+                        <td className="px-2 py-2">{formatNumber(row.locationCount)}</td>
+                        <td className="px-2 py-2">{formatNumber(row.warehouseCount)}</td>
+                        <td className="px-2 py-2 text-right font-semibold">{formatNumber(row.totalUnits)}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls page={skuPage} totalPages={skuTotalPages} setPage={setSkuPage}
+                totalItems={filteredSkuRows.length} label="SKU(s)" />
+            </>
           )}
         </section>
 
+        {/* Locations — filtered & paginated */}
         <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-black">Locations</h2>
@@ -534,7 +569,6 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
             </p>
           </div>
 
-          {/* Filters */}
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <input
               type="text"
@@ -579,61 +613,125 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
           ) : filteredLocations.length === 0 ? (
             <p className="text-sm text-black/60">No locations match the current filters.</p>
           ) : (
-            <div className="overflow-auto">
-              <table className="min-w-[900px] w-full text-left text-sm">
-                <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                  <tr>
-                    <th className="px-2 py-2">Code</th>
-                    <th className="px-2 py-2">Name</th>
-                    <th className="px-2 py-2">Zone</th>
-                    <th className="px-2 py-2">Warehouse</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2 text-center">Capacity</th>
-                    <th className="px-2 py-2">Status</th>
-                    <th className="px-2 py-2 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLocations.map((loc) => (
-                    <tr key={loc.id} className="border-b border-black/10">
-                      <td className="px-2 py-2 font-mono text-xs font-semibold">{loc.code}</td>
-                      <td className="px-2 py-2">{loc.name}</td>
-                      <td className="px-2 py-2 text-black/60">{loc.zoneName}</td>
-                      <td className="px-2 py-2 text-black/60">{loc.warehouseCode}</td>
-                      <td className="px-2 py-2">
-                        <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
-                          {loc.type}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-center">{formatNumber(loc.capacity)}</td>
-                      <td className="px-2 py-2">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          loc.status === "active"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-red-100 text-red-700"
-                        }`}>
-                          {loc.status}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-right">
-                        <button
-                          type="button"
-                          disabled={togglingId === loc.id}
-                          onClick={() => handleToggleStatus(loc)}
-                          className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                            loc.status === "active"
-                              ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                              : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          } disabled:opacity-50`}
-                        >
-                          {togglingId === loc.id ? "…" : loc.status === "active" ? "Lock" : "Activate"}
-                        </button>
-                      </td>
+            <>
+              <div className="overflow-auto">
+                <table className="min-w-[900px] w-full text-left text-sm">
+                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
+                    <tr>
+                      <th className="px-2 py-2">Code</th>
+                      <th className="px-2 py-2">Name</th>
+                      <th className="px-2 py-2">Zone</th>
+                      <th className="px-2 py-2">Warehouse</th>
+                      <th className="px-2 py-2">Type</th>
+                      <th className="px-2 py-2 text-center">Capacity</th>
+                      <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {pagedLocations.map((loc) => (
+                      <tr key={loc.id} className="border-b border-black/10">
+                        <td className="px-2 py-2 font-mono text-xs font-semibold">{loc.code}</td>
+                        <td className="px-2 py-2">{loc.name}</td>
+                        <td className="px-2 py-2 text-black/60">{loc.zoneName}</td>
+                        <td className="px-2 py-2 text-black/60">{loc.warehouseCode}</td>
+                        <td className="px-2 py-2">
+                          <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
+                            {loc.type}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center">{formatNumber(loc.capacity)}</td>
+                        <td className="px-2 py-2">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            loc.status === "active"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-red-100 text-red-700"
+                          }`}>
+                            {loc.status}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <button
+                            type="button"
+                            disabled={togglingId === loc.id}
+                            onClick={() => handleToggleStatus(loc)}
+                            className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                              loc.status === "active"
+                                ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            } disabled:opacity-50`}
+                          >
+                            {togglingId === loc.id ? "…" : loc.status === "active" ? "Lock" : "Activate"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls page={locPage} totalPages={locTotalPages} setPage={setLocPage}
+                totalItems={filteredLocations.length} label="location(s)" />
+            </>
+          )}
+        </section>
+
+        {/* Recent Movements — paginated, 10 per page */}
+        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-black">Recent Movements</h2>
+            <p className="text-xs text-black/60">{movementRows.length} record(s)</p>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={`movement-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
+              ))}
             </div>
+          ) : movementRows.length === 0 ? (
+            <p className="text-sm text-black/60">No recent movement found.</p>
+          ) : (
+            <>
+              <div className="overflow-auto">
+                <table className="min-w-[840px] w-full text-left text-sm">
+                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
+                    <tr>
+                      <th className="px-2 py-2">When</th>
+                      <th className="px-2 py-2">SKU</th>
+                      <th className="px-2 py-2">Type</th>
+                      <th className="px-2 py-2">From</th>
+                      <th className="px-2 py-2">To</th>
+                      <th className="px-2 py-2">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedMovements.map((row) => {
+                      const badgeClassName =
+                        movementTypeClassNameMap[row.movementType] || "border-slate-300 bg-slate-100 text-slate-700";
+
+                      return (
+                        <tr key={row.id} className="border-b border-black/10">
+                          <td className="px-2 py-2 whitespace-nowrap">{formatDateTime(row.createdAt)}</td>
+                          <td className="px-2 py-2">
+                            {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
+                          </td>
+                          <td className="px-2 py-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClassName}`}>
+                              {row.movementType}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2">{row.fromLocationCode || "-"}</td>
+                          <td className="px-2 py-2">{row.toLocationCode || "-"}</td>
+                          <td className="px-2 py-2 font-semibold">{formatNumber(row.quantity)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls page={movPage} totalPages={movTotalPages} setPage={setMovPage}
+                totalItems={movementRows.length} label="movement(s)" />
+            </>
           )}
         </section>
       </div>
