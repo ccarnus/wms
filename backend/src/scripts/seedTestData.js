@@ -6,7 +6,7 @@ const { hashPassword } = require("../services/authService");
  * Idempotent: uses ON CONFLICT DO NOTHING so it's safe to run repeatedly.
  *
  * Seeds:
- *  - Warehouses, locations, products, inventory
+ *  - Warehouses, locations, SKUs, inventory
  *  - Rich movement history (30 days)
  *  - Zones, zone-location mappings
  *  - Operators, operator-zone assignments
@@ -99,9 +99,9 @@ const seed = async () => {
   ]);
   console.log("  locations");
 
-  // ── Products ────────────────────────────────────────────────
+  // ── SKUs ───────────────────────────────────────────────────
   await query(`
-    INSERT INTO products (sku, name) VALUES
+    INSERT INTO skus (sku, description) VALUES
       ('SKU-1001', 'Storage Bin Small'),
       ('SKU-1002', 'Storage Bin Large'),
       ('SKU-1003', 'Barcode Scanner'),
@@ -126,11 +126,11 @@ const seed = async () => {
       ('SKU-4005', 'Warehouse Fan Industrial')
     ON CONFLICT (sku) DO NOTHING
   `);
-  console.log("  products");
+  console.log("  skus");
 
   // ── Inventory ───────────────────────────────────────────────
   await query(`
-    INSERT INTO inventory (product_id, location_id, quantity)
+    INSERT INTO inventory (sku_id, location_id, quantity)
     SELECT p.id, l.id, s.qty
     FROM (VALUES
       ('SKU-1001', 'PAR-RACK-A1',  120),
@@ -160,9 +160,9 @@ const seed = async () => {
       ('SKU-1002', 'LIL-RACK-B1',   35),
       ('SKU-2001', 'LYN-RACK-A1',  180)
     ) AS s(sku, loc_code, qty)
-    JOIN products  p ON p.sku  = s.sku
+    JOIN skus      p ON p.sku  = s.sku
     JOIN locations l ON l.code = s.loc_code
-    ON CONFLICT (product_id, location_id) DO NOTHING
+    ON CONFLICT (sku_id, location_id) DO NOTHING
   `);
   console.log("  inventory");
 
@@ -205,9 +205,9 @@ const seed = async () => {
 
   for (const [sku, fromLoc, toLoc, qty, mtype, ref, daysAgo] of movementData) {
     await query(`
-      INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, movement_type, reference, created_at)
+      INSERT INTO movements (sku_id, from_location_id, to_location_id, quantity, movement_type, reference, created_at)
       SELECT p.id, fl.id, tl.id, $4, $5, $6, NOW() - ($7 || ' days')::interval + (random() * interval '8 hours')
-      FROM products p
+      FROM skus p
       LEFT JOIN locations fl ON fl.code = $2
       LEFT JOIN locations tl ON tl.code = $3
       WHERE p.sku = $1
@@ -415,7 +415,7 @@ const seed = async () => {
       await query(`
         INSERT INTO task_lines (task_id, sku_id, from_location_id, to_location_id, quantity, status)
         SELECT $1::uuid, p.id, fl.id, tl.id, $4, $5::task_line_status
-        FROM products p
+        FROM skus p
         JOIN locations fl ON fl.code = $2
         JOIN locations tl ON tl.code = $3
         WHERE p.sku = $6

@@ -140,8 +140,8 @@ const getTaskById = async (taskId) => {
       `SELECT
         tl.id,
         tl.sku_id AS "skuId",
-        p.sku,
-        p.name AS "skuName",
+        s.sku,
+        s.description AS "skuDescription",
         tl.from_location_id AS "fromLocationId",
         from_loc.code AS "fromLocationCode",
         tl.to_location_id AS "toLocationId",
@@ -149,7 +149,7 @@ const getTaskById = async (taskId) => {
         tl.quantity,
         tl.status
       FROM task_lines tl
-      INNER JOIN products p ON p.id = tl.sku_id
+      INNER JOIN skus s ON s.id = tl.sku_id
       LEFT JOIN locations from_loc ON from_loc.id = tl.from_location_id
       LEFT JOIN locations to_loc ON to_loc.id = tl.to_location_id
       WHERE tl.task_id = $1

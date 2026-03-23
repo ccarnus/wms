@@ -24,7 +24,7 @@ router.get("/summary", async (_req, res, next) => {
       `SELECT
         (SELECT COUNT(*) FROM warehouses)::int AS "warehouseCount",
         (SELECT COUNT(*) FROM locations)::int AS "locationCount",
-        (SELECT COUNT(*) FROM products)::int AS "productCount",
+        (SELECT COUNT(*) FROM skus)::int AS "skuCount",
         (SELECT COALESCE(SUM(quantity), 0) FROM inventory)::int AS "totalUnits"`
     );
     res.json(rows[0]);
@@ -52,33 +52,14 @@ router.get("/warehouses", async (_req, res, next) => {
   }
 });
 
-router.get("/products", async (_req, res, next) => {
-  try {
-    const { rows } = await query(
-      `SELECT
-        p.id,
-        p.sku,
-        p.name,
-        COALESCE(SUM(i.quantity), 0)::int AS "totalQuantity"
-      FROM products p
-      LEFT JOIN inventory i ON i.product_id = p.id
-      GROUP BY p.id
-      ORDER BY p.sku`
-    );
-    res.json(rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get("/inventory", async (_req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT
         i.id,
-        p.id AS "productId",
-        p.sku,
-        p.name AS "productName",
+        s.id AS "skuId",
+        s.sku,
+        s.description AS "skuDescription",
         l.id AS "locationId",
         l.code AS "locationCode",
         l.name AS "locationName",
@@ -87,10 +68,10 @@ router.get("/inventory", async (_req, res, next) => {
         w.name AS "warehouseName",
         i.quantity
       FROM inventory i
-      INNER JOIN products p ON p.id = i.product_id
+      INNER JOIN skus s ON s.id = i.sku_id
       INNER JOIN locations l ON l.id = i.location_id
       INNER JOIN warehouses w ON w.id = l.warehouse_id
-      ORDER BY p.sku, w.code, l.code`
+      ORDER BY s.sku, w.code, l.code`
     );
     res.json(rows);
   } catch (error) {
@@ -105,9 +86,9 @@ router.get("/movements", async (req, res, next) => {
     const { rows } = await query(
       `SELECT
         m.id,
-        m.product_id AS "productId",
-        p.sku,
-        p.name AS "productName",
+        m.sku_id AS "skuId",
+        s.sku,
+        s.description AS "skuDescription",
         m.from_location_id AS "fromLocationId",
         from_loc.code AS "fromLocationCode",
         m.to_location_id AS "toLocationId",
@@ -117,7 +98,7 @@ router.get("/movements", async (req, res, next) => {
         m.reference,
         m.created_at AS "createdAt"
       FROM movements m
-      INNER JOIN products p ON p.id = m.product_id
+      INNER JOIN skus s ON s.id = m.sku_id
       LEFT JOIN locations from_loc ON from_loc.id = m.from_location_id
       LEFT JOIN locations to_loc ON to_loc.id = m.to_location_id
       ORDER BY m.created_at DESC
@@ -134,7 +115,7 @@ router.post("/movements", async (req, res, next) => {
   const client = await pool.connect();
   let inTransaction = false;
   try {
-    const productId = ensurePositiveInteger(req.body.productId, "productId");
+    const skuId = ensurePositiveInteger(req.body.skuId, "skuId");
     const quantity = ensurePositiveInteger(req.body.quantity, "quantity");
     const fromLocationId = req.body.fromLocationId ? ensurePositiveInteger(req.body.fromLocationId, "fromLocationId") : null;
     const toLocationId = req.body.toLocationId ? ensurePositiveInteger(req.body.toLocationId, "toLocationId") : null;
@@ -152,9 +133,9 @@ router.post("/movements", async (req, res, next) => {
     await client.query("BEGIN");
     inTransaction = true;
 
-    const productCheck = await client.query("SELECT id FROM products WHERE id = $1", [productId]);
-    if (productCheck.rowCount === 0) {
-      throw badRequest("Unknown productId");
+    const skuCheck = await client.query("SELECT id FROM skus WHERE id = $1", [skuId]);
+    if (skuCheck.rowCount === 0) {
+      throw badRequest("Unknown skuId");
     }
 
     if (fromLocationId) {
@@ -166,9 +147,9 @@ router.post("/movements", async (req, res, next) => {
       const sourceStock = await client.query(
         `SELECT quantity
          FROM inventory
-         WHERE product_id = $1 AND location_id = $2
+         WHERE sku_id = $1 AND location_id = $2
          FOR UPDATE`,
-        [productId, fromLocationId]
+        [skuId, fromLocationId]
       );
 
       const sourceQty = sourceStock.rowCount > 0 ? sourceStock.rows[0].quantity : 0;
@@ -180,8 +161,8 @@ router.post("/movements", async (req, res, next) => {
         `UPDATE inventory
          SET quantity = quantity - $1,
              updated_at = NOW()
-         WHERE product_id = $2 AND location_id = $3`,
-        [quantity, productId, fromLocationId]
+         WHERE sku_id = $2 AND location_id = $3`,
+        [quantity, skuId, fromLocationId]
       );
     }
 
@@ -192,19 +173,19 @@ router.post("/movements", async (req, res, next) => {
       }
 
       await client.query(
-        `INSERT INTO inventory (product_id, location_id, quantity)
+        `INSERT INTO inventory (sku_id, location_id, quantity)
          VALUES ($1, $2, $3)
-         ON CONFLICT (product_id, location_id)
+         ON CONFLICT (sku_id, location_id)
          DO UPDATE SET
            quantity = inventory.quantity + EXCLUDED.quantity,
            updated_at = NOW()`,
-        [productId, toLocationId, quantity]
+        [skuId, toLocationId, quantity]
       );
     }
 
     const movementInsert = await client.query(
       `INSERT INTO movements (
-        product_id,
+        sku_id,
         from_location_id,
         to_location_id,
         quantity,
@@ -213,14 +194,14 @@ router.post("/movements", async (req, res, next) => {
       ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING
         id,
-        product_id AS "productId",
+        sku_id AS "skuId",
         from_location_id AS "fromLocationId",
         to_location_id AS "toLocationId",
         quantity,
         movement_type AS "movementType",
         reference,
         created_at AS "createdAt"`,
-      [productId, fromLocationId, toLocationId, quantity, movementType, reference]
+      [skuId, fromLocationId, toLocationId, quantity, movementType, reference]
     );
 
     await client.query("COMMIT");

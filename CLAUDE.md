@@ -77,10 +77,7 @@ Workers (separate Node processes, same Docker image as backend):
 
 ### Database (`database/init/`)
 
-SQL files run alphabetically on first PostgreSQL init. Existing DB requires manual migration.
-
-- `001_schema.sql` — Core tables (warehouses, locations, products, inventory, movements, operators, zones, tasks, task_lines, labor_daily_metrics, audit logs) + seed data + `set_updated_at_timestamp()` trigger function.
-- `002_users.sql` — `user_role` enum + `users` table with bcrypt passwords.
+Single `001_schema.sql` file contains the complete schema: all enums, tables (warehouses, zones, locations, skus, inventory, movements, operators, tasks, task_lines, users, integrations, labor_daily_metrics, audit logs), indexes, trigger function, and triggers.
 
 ### Authentication
 

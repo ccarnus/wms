@@ -15,6 +15,7 @@ const integrationsRoutes = require("./routes/integrations");
 const integrationWebhookRoutes = require("./routes/integrationWebhook");
 const zonesRoutes = require("./routes/zones");
 const locationsRoutes = require("./routes/locations");
+const skusRoutes = require("./routes/skus");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -35,7 +36,8 @@ app.get("/", (_req, res) => {
       "/api/auth/me",
       "/api/warehouses",
       "/api/locations",
-      "/api/products",
+      "/api/skus",
+      "/api/skus/:id",
       "/api/inventory",
       "/api/movements",
       "/api/order-events",
@@ -79,6 +81,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/integrations", integrationsRoutes);
 app.use("/api/zones", zonesRoutes);
 app.use("/api/locations", locationsRoutes);
+app.use("/api/skus", skusRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

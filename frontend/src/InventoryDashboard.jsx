@@ -92,7 +92,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
   const [summary, setSummary] = useState(null);
   const [inventoryRows, setInventoryRows] = useState([]);
-  const [productRows, setProductRows] = useState([]);
+  const [skuRows, setSkuRows] = useState([]);
   const [movementRows, setMovementRows] = useState([]);
 
   const [locationRows, setLocationRows] = useState([]);
@@ -111,17 +111,17 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
     }
 
     try {
-      const [summaryResponse, inventoryResponse, productsResponse, movementsResponse, locationsResponse] = await Promise.all([
+      const [summaryResponse, inventoryResponse, skusResponse, movementsResponse, locationsResponse] = await Promise.all([
         fetchJson("/api/summary", jwtToken, onAuthError),
         fetchJson("/api/inventory", jwtToken, onAuthError),
-        fetchJson("/api/products", jwtToken, onAuthError),
+        fetchJson("/api/skus", jwtToken, onAuthError),
         fetchJson(`/api/movements?${toQueryString({ limit: 12 })}`, jwtToken, onAuthError),
         fetchJson("/api/locations", jwtToken, onAuthError)
       ]);
 
       setSummary(summaryResponse || null);
       setInventoryRows(Array.isArray(inventoryResponse) ? inventoryResponse : []);
-      setProductRows(Array.isArray(productsResponse) ? productsResponse : []);
+      setSkuRows(Array.isArray(skusResponse) ? skusResponse : []);
       setMovementRows(Array.isArray(movementsResponse) ? movementsResponse : []);
       setLocationRows(Array.isArray(locationsResponse) ? locationsResponse : []);
       setErrorMessage("");
@@ -163,8 +163,8 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
   const kpis = useMemo(() => {
     const lowThreshold = Math.max(0, Number(lowStockThreshold) || 0);
-    const outOfStockSkuCount = productRows.filter((row) => Number(row.totalQuantity || 0) <= 0).length;
-    const lowStockSkuCount = productRows.filter((row) => {
+    const outOfStockSkuCount = skuRows.filter((row) => Number(row.totalQuantity || 0) <= 0).length;
+    const lowStockSkuCount = skuRows.filter((row) => {
       const totalQuantity = Number(row.totalQuantity || 0);
       return totalQuantity > 0 && totalQuantity <= lowThreshold;
     }).length;
@@ -181,7 +181,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       {
         id: "skuCount",
         title: "Total SKUs",
-        value: formatNumber(summary?.productCount || productRows.length),
+        value: formatNumber(summary?.skuCount || skuRows.length),
         hint: "catalog product count"
       },
       {
@@ -209,7 +209,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
         hint: "warehouses with active inventory"
       }
     ];
-  }, [inventoryRows, lowStockThreshold, productRows, summary]);
+  }, [inventoryRows, lowStockThreshold, skuRows, summary]);
 
   const warehouseRows = useMemo(() => {
     const aggregationMap = new Map();
@@ -228,7 +228,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
       const aggregationRow = aggregationMap.get(row.warehouseId);
       aggregationRow.totalUnits += Number(row.quantity || 0);
-      aggregationRow.skuSet.add(row.productId);
+      aggregationRow.skuSet.add(row.skuId);
       aggregationRow.locationSet.add(row.locationId);
     }
 
@@ -248,18 +248,18 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
     const aggregationMap = new Map();
 
     for (const row of inventoryRows) {
-      if (!aggregationMap.has(row.productId)) {
-        aggregationMap.set(row.productId, {
-          productId: row.productId,
+      if (!aggregationMap.has(row.skuId)) {
+        aggregationMap.set(row.skuId, {
+          skuId: row.skuId,
           sku: row.sku,
-          productName: row.productName,
+          skuDescription: row.skuDescription,
           totalUnits: 0,
           locationSet: new Set(),
           warehouseSet: new Set()
         });
       }
 
-      const aggregationRow = aggregationMap.get(row.productId);
+      const aggregationRow = aggregationMap.get(row.skuId);
       aggregationRow.totalUnits += Number(row.quantity || 0);
       aggregationRow.locationSet.add(row.locationId);
       aggregationRow.warehouseSet.add(row.warehouseCode);
@@ -267,9 +267,9 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
     return Array.from(aggregationMap.values())
       .map((row) => ({
-        productId: row.productId,
+        skuId: row.skuId,
         sku: row.sku,
-        productName: row.productName,
+        skuDescription: row.skuDescription,
         totalUnits: row.totalUnits,
         locationCount: row.locationSet.size,
         warehouseCount: row.warehouseSet.size
@@ -280,7 +280,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
 
   const lowStockRows = useMemo(() => {
     const threshold = Math.max(0, Number(lowStockThreshold) || 0);
-    return productRows
+    return skuRows
       .map((row) => ({
         ...row,
         totalQuantity: Number(row.totalQuantity || 0)
@@ -288,7 +288,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
       .filter((row) => row.totalQuantity <= threshold)
       .sort((left, right) => left.totalQuantity - right.totalQuantity)
       .slice(0, 10);
-  }, [lowStockThreshold, productRows]);
+  }, [lowStockThreshold, skuRows]);
 
   const handleToggleStatus = useCallback(async (loc) => {
     const newStatus = loc.status === "active" ? "locked" : "active";
@@ -426,7 +426,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
                 {lowStockRows.map((row) => (
                   <li key={row.id} className="rounded-xl border border-black/10 p-3">
                     <p className="text-sm font-semibold">
-                      {row.sku} - {row.name}
+                      {row.sku}{row.description ? ` - ${row.description}` : ""}
                     </p>
                     <p className="mt-1 text-xs text-black/60">Total units: {formatNumber(row.totalQuantity)}</p>
                   </li>
@@ -452,10 +452,10 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
             ) : (
               <ul className="space-y-2">
                 {topSkuRows.map((row) => (
-                  <li key={row.productId} className="rounded-xl border border-black/10 p-3">
+                  <li key={row.skuId} className="rounded-xl border border-black/10 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">
-                        {row.sku} - {row.productName}
+                        {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
                       </p>
                       <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
                         {formatNumber(row.totalUnits)} units
@@ -507,7 +507,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
                       <tr key={row.id} className="border-b border-black/10">
                         <td className="px-2 py-2 whitespace-nowrap">{formatDateTime(row.createdAt)}</td>
                         <td className="px-2 py-2">
-                          {row.sku} - {row.productName}
+                          {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
                         </td>
                         <td className="px-2 py-2">
                           <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClassName}`}>

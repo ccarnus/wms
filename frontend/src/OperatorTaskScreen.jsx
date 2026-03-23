@@ -313,7 +313,7 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
               {task.lines.map((line) => (
                 <li key={line.id} className="rounded-xl border border-black/10 p-3">
                   <p className="text-sm font-semibold">
-                    {line.sku} - {line.skuName}
+                    {line.sku}{line.skuDescription ? ` - ${line.skuDescription}` : ""}
                   </p>
                   <p className="mt-1 text-sm">Quantity: {line.quantity}</p>
                   <p className="mt-1 text-xs text-black/70">Location: {deriveDisplayLocation(line)}</p>
