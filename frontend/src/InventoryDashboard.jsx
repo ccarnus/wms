@@ -354,9 +354,9 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   useEffect(() => { setSkuPage(1); }, [skuFilterSearch, skuFilterWarehouse]);
 
   // Pagination helpers
-  const LOC_PER_PAGE = 15;
+  const LOC_PER_PAGE = 10;
   const MOV_PER_PAGE = 10;
-  const SKU_PER_PAGE = 15;
+  const SKU_PER_PAGE = 10;
 
   const locTotalPages = Math.max(1, Math.ceil(filteredLocations.length / LOC_PER_PAGE));
   const pagedLocations = filteredLocations.slice((locPage - 1) * LOC_PER_PAGE, locPage * LOC_PER_PAGE);
