@@ -61,6 +61,52 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
+/* ── Warehouse Form ──────────────────────────────────────────────── */
+
+function WarehouseForm({ warehouse, onSave, onClose }) {
+  const [code, setCode] = useState(warehouse?.code || "");
+  const [name, setName] = useState(warehouse?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ code: code.trim(), name: name.trim() });
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      <label className="block">
+        <span className="text-sm font-semibold text-gray-700">Code</span>
+        <input value={code} onChange={(e) => setCode(e.target.value)} required
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. WH-PARIS-01" />
+      </label>
+      <label className="block">
+        <span className="text-sm font-semibold text-gray-700">Name</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} required
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. Paris Main Warehouse" />
+      </label>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+        <button type="submit" disabled={saving}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50">
+          {saving ? "Saving…" : warehouse ? "Update" : "Create"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /* ── Zone Form ────────────────────────────────────────────────────── */
 
 function ZoneForm({ zone, warehouses, onSave, onClose }) {
@@ -315,7 +361,7 @@ function SkuForm({ skuData, onSave, onClose }) {
 /* ── Main Screen ──────────────────────────────────────────────────── */
 
 export default function ConfigurationScreen({ jwtToken, onAuthError }) {
-  const [tab, setTab] = useState("zones");
+  const [tab, setTab] = useState("warehouses");
   const [warehouses, setWarehouses] = useState([]);
   const [zones, setZones] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -324,7 +370,7 @@ export default function ConfigurationScreen({ jwtToken, onAuthError }) {
   const [error, setError] = useState(null);
 
   // Modal state
-  const [modal, setModal] = useState(null); // { type: 'zone'|'location'|'sku', mode: 'create'|'edit', data?: object }
+  const [modal, setModal] = useState(null); // { type: 'warehouse'|'zone'|'location'|'sku', mode: 'create'|'edit', data?: object }
 
   const apiFetch = useCallback(async (path, options = {}) => {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -424,7 +470,72 @@ export default function ConfigurationScreen({ jwtToken, onAuthError }) {
     }
   };
 
+  /* ── Warehouse CRUD handlers ────────────────────────────────── */
+  const handleCreateWarehouse = async (data) => {
+    await apiFetch("/api/warehouses", { method: "POST", body: JSON.stringify(data) });
+    await loadData();
+  };
+
+  const handleUpdateWarehouse = async (id, data) => {
+    await apiFetch(`/api/warehouses/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    await loadData();
+  };
+
+  const handleDeleteWarehouse = async (id) => {
+    if (!window.confirm("Delete this warehouse? This cannot be undone.")) return;
+    try {
+      await apiFetch(`/api/warehouses/${id}`, { method: "DELETE" });
+      await loadData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   /* ── Render tab content ─────────────────────────────────────── */
+
+  const renderWarehousesTab = () => (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-ink">Warehouses</h2>
+        <button
+          type="button"
+          onClick={() => setModal({ type: "warehouse", mode: "create" })}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+        >
+          + New Warehouse
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-black/5 bg-canvas">
+              <th className="px-4 py-3 font-semibold text-black/60">Code</th>
+              <th className="px-4 py-3 font-semibold text-black/60">Name</th>
+              <th className="px-4 py-3 text-center font-semibold text-black/60">Locations</th>
+              <th className="px-4 py-3 text-right font-semibold text-black/60">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {warehouses.length === 0 ? (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-black/40">No warehouses yet. Create one to get started.</td></tr>
+            ) : warehouses.map((w) => (
+              <tr key={w.id} className="border-b border-black/5 last:border-0 hover:bg-canvas/50">
+                <td className="px-4 py-3 font-mono text-xs font-semibold text-ink">{w.code}</td>
+                <td className="px-4 py-3 text-ink">{w.name}</td>
+                <td className="px-4 py-3 text-center">{w.locationCount}</td>
+                <td className="px-4 py-3 text-right">
+                  <button type="button" onClick={() => setModal({ type: "warehouse", mode: "edit", data: w })}
+                    className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
+                  <button type="button" onClick={() => handleDeleteWarehouse(w.id)}
+                    className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   const renderZonesTab = () => (
     <div>
@@ -433,11 +544,17 @@ export default function ConfigurationScreen({ jwtToken, onAuthError }) {
         <button
           type="button"
           onClick={() => setModal({ type: "zone", mode: "create" })}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          disabled={warehouses.length === 0}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
         >
           + New Zone
         </button>
       </div>
+      {warehouses.length === 0 && (
+        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+          You must create at least one warehouse before adding zones.
+        </p>
+      )}
       <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead>
@@ -616,6 +733,7 @@ export default function ConfigurationScreen({ jwtToken, onAuthError }) {
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-black/10 bg-white p-1">
         {[
+          { id: "warehouses", label: "Warehouses", count: warehouses.length },
           { id: "zones", label: "Zones", count: zones.length },
           { id: "locations", label: "Locations", count: locations.length },
           { id: "skus", label: "SKUs", count: skus.length },
@@ -642,11 +760,22 @@ export default function ConfigurationScreen({ jwtToken, onAuthError }) {
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
         </div>
-      ) : tab === "zones" ? renderZonesTab()
+      ) : tab === "warehouses" ? renderWarehousesTab()
+        : tab === "zones" ? renderZonesTab()
         : tab === "locations" ? renderLocationsTab()
         : renderSkusTab()}
 
       {/* ── Modals ────────────────────────────────────────────── */}
+      {modal?.type === "warehouse" && (
+        <Modal title={modal.mode === "create" ? "Create Warehouse" : "Edit Warehouse"} onClose={() => setModal(null)}>
+          <WarehouseForm
+            warehouse={modal.data}
+            onSave={(data) => modal.mode === "create" ? handleCreateWarehouse(data) : handleUpdateWarehouse(modal.data.id, data)}
+            onClose={() => setModal(null)}
+          />
+        </Modal>
+      )}
+
       {modal?.type === "zone" && (
         <Modal title={modal.mode === "create" ? "Create Zone" : "Edit Zone"} onClose={() => setModal(null)}>
           <ZoneForm
