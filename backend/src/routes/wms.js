@@ -33,25 +33,6 @@ router.get("/summary", async (_req, res, next) => {
   }
 });
 
-router.get("/warehouses", async (_req, res, next) => {
-  try {
-    const { rows } = await query(
-      `SELECT
-        w.id,
-        w.code,
-        w.name,
-        COUNT(l.id)::int AS "locationCount"
-      FROM warehouses w
-      LEFT JOIN locations l ON l.warehouse_id = w.id
-      GROUP BY w.id
-      ORDER BY w.code`
-    );
-    res.json(rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get("/inventory", async (_req, res, next) => {
   try {
     const { rows } = await query(

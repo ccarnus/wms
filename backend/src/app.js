@@ -13,6 +13,7 @@ const laborRoutes = require("./routes/labor");
 const usersRoutes = require("./routes/users");
 const integrationsRoutes = require("./routes/integrations");
 const integrationWebhookRoutes = require("./routes/integrationWebhook");
+const warehousesRoutes = require("./routes/warehouses");
 const zonesRoutes = require("./routes/zones");
 const locationsRoutes = require("./routes/locations");
 const skusRoutes = require("./routes/skus");
@@ -35,6 +36,7 @@ app.get("/", (_req, res) => {
       "/api/auth/login",
       "/api/auth/me",
       "/api/warehouses",
+      "/api/warehouses/:id",
       "/api/locations",
       "/api/skus",
       "/api/skus/:id",
@@ -79,6 +81,7 @@ app.use("/api/tasks", tasksRoutes);
 app.use("/api/labor", laborRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/integrations", integrationsRoutes);
+app.use("/api/warehouses", warehousesRoutes);
 app.use("/api/zones", zonesRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/skus", skusRoutes);
