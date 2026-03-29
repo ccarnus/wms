@@ -4,7 +4,7 @@ const { hashPassword } = require("../services/authService");
 const SEED_USERS = [
   {
     username: "admin",
-    password: "admin123",
+    password: "exotec",
     displayName: "System Administrator",
     role: "admin",
     operatorId: null
