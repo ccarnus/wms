@@ -586,10 +586,7 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
         {/* ── Top bar ──────────────────────────────────────────── */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/Logo.png" alt="Greenlights" className="h-6 w-auto" />
-            <span className="text-sm font-bold tracking-tight text-ink">
-              Green<span className="text-accent-600">lights</span>
-            </span>
+            <img src="/Greenlights_icon.png" alt="Greenlights" className="h-6 w-auto" />
           </div>
           <button
             type="button"

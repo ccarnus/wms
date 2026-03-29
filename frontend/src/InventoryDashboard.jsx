@@ -453,8 +453,7 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
           )}
         </section>
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <article className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black">Low Stock SKUs</h2>
               <label className="text-xs text-black/60">
@@ -489,7 +488,6 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
                 ))}
               </ul>
             )}
-          </article>
         </section>
 
         {/* SKU by Units — filtered & paginated table */}
