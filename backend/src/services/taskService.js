@@ -98,7 +98,11 @@ const buildTaskFilters = ({ status = null, operatorId = null, zoneId = null } = 
   if (zoneId !== null && zoneId !== undefined) {
     assertUuid(zoneId, "zoneId");
     values.push(zoneId);
-    conditions.push(`t.zone_id = $${values.length}`);
+    conditions.push(`(t.zone_id = $${values.length} OR (t.zone_id IS NULL AND EXISTS (
+      SELECT 1 FROM task_lines tl
+      JOIN locations l ON l.id = COALESCE(tl.from_location_id, tl.to_location_id)
+      WHERE tl.task_id = t.id AND l.zone_id = $${values.length}
+    )))`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -126,16 +130,18 @@ const getTaskById = async (taskId) => {
   const task = Task.fromRow(rows[0]);
 
   const [zoneResult, lineResult] = await Promise.all([
-    query(
-      `SELECT
-        z.id,
-        z.name,
-        z.type,
-        z.warehouse_id AS "warehouseId"
-      FROM zones z
-      WHERE z.id = $1`,
-      [task.zoneId]
-    ),
+    task.zoneId
+      ? query(
+          `SELECT
+            z.id,
+            z.name,
+            z.type,
+            z.warehouse_id AS "warehouseId"
+          FROM zones z
+          WHERE z.id = $1`,
+          [task.zoneId]
+        )
+      : Promise.resolve({ rows: [] }),
     query(
       `SELECT
         tl.id,
@@ -147,13 +153,17 @@ const getTaskById = async (taskId) => {
         tl.to_location_id AS "toLocationId",
         to_loc.code AS "toLocationCode",
         tl.quantity,
-        tl.status
+        tl.status,
+        from_loc.zone_id AS "zoneId",
+        from_zone.name AS "zoneName",
+        from_zone.type AS "zoneType"
       FROM task_lines tl
       INNER JOIN skus s ON s.id = tl.sku_id
       LEFT JOIN locations from_loc ON from_loc.id = tl.from_location_id
+      LEFT JOIN zones from_zone ON from_zone.id = from_loc.zone_id
       LEFT JOIN locations to_loc ON to_loc.id = tl.to_location_id
       WHERE tl.task_id = $1
-      ORDER BY tl.id ASC`,
+      ORDER BY from_zone.name ASC, tl.id ASC`,
       [task.id]
     )
   ]);

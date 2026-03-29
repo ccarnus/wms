@@ -198,29 +198,30 @@ const buildSalesOrderPickTaskSpecs = (event, zoneResolver, options = {}) => {
   );
   const priority = calculatePickPriority(event.shipDate, options.now ?? new Date());
 
-  const groupedByZone = groupLinesByZone(event.lines, zoneResolver, "pickLocationId");
-  const taskSpecs = [];
-
-  for (const [zoneId, lines] of groupedByZone.entries()) {
-    const totalUnits = lines.reduce((sum, line) => sum + line.quantity, 0);
-
-    taskSpecs.push({
-      type: "pick",
-      priority,
-      zoneId,
-      sourceDocumentId: event.sourceDocumentId,
-      estimatedTimeSeconds: calculateEstimatedTimeSeconds(totalUnits, baseTimeSeconds, timePerUnitSeconds),
-      lines: lines.map((line) => ({
-        skuId: line.skuId,
-        fromLocationId: line.pickLocationId,
-        toLocationId: null,
-        quantity: line.quantity,
-        status: "created"
-      }))
-    });
+  // Validate all locations have zone mappings (but don't split by zone)
+  for (const line of event.lines) {
+    const zoneId = zoneResolver(line.pickLocationId);
+    if (!zoneId) {
+      throw createHttpError(400, `No zone mapping found for location ${line.pickLocationId}`);
+    }
   }
 
-  return taskSpecs;
+  const totalUnits = event.lines.reduce((sum, line) => sum + line.quantity, 0);
+
+  return [{
+    type: "pick",
+    priority,
+    zoneId: null,
+    sourceDocumentId: event.sourceDocumentId,
+    estimatedTimeSeconds: calculateEstimatedTimeSeconds(totalUnits, baseTimeSeconds, timePerUnitSeconds),
+    lines: event.lines.map((line) => ({
+      skuId: line.skuId,
+      fromLocationId: line.pickLocationId,
+      toLocationId: null,
+      quantity: line.quantity,
+      status: "created"
+    }))
+  }];
 };
 
 const buildPurchaseOrderPutawayTaskSpecs = (event, zoneResolver, options = {}) => {

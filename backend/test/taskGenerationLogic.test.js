@@ -38,7 +38,7 @@ test("normalizeTaskGenerationEvent validates and normalizes sales order events",
   assert.match(normalized.eventKey, /^sales_order_ready_for_pick--SO-SO-123--/);
 });
 
-test("buildSalesOrderPickTaskSpecs groups lines by zone and computes estimation", () => {
+test("buildSalesOrderPickTaskSpecs creates one task per order with all lines", () => {
   const normalized = normalizeTaskGenerationEvent({
     type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
     salesOrderId: "SO-777",
@@ -63,19 +63,18 @@ test("buildSalesOrderPickTaskSpecs groups lines by zone and computes estimation"
     now: new Date("2026-03-01T00:00:00.000Z")
   });
 
-  assert.equal(taskSpecs.length, 2);
+  assert.equal(taskSpecs.length, 1);
 
-  const zoneATask = taskSpecs.find((spec) => spec.zoneId === "zone-a");
-  assert.ok(zoneATask);
-  assert.equal(zoneATask.type, "pick");
-  assert.equal(zoneATask.priority, 90);
-  assert.equal(zoneATask.estimatedTimeSeconds, 85);
-  assert.equal(zoneATask.lines.length, 2);
-
-  const zoneBTask = taskSpecs.find((spec) => spec.zoneId === "zone-b");
-  assert.ok(zoneBTask);
-  assert.equal(zoneBTask.estimatedTimeSeconds, 65);
-  assert.equal(zoneBTask.lines.length, 1);
+  const task = taskSpecs[0];
+  assert.equal(task.type, "pick");
+  assert.equal(task.priority, 90);
+  assert.equal(task.zoneId, null);
+  assert.equal(task.lines.length, 3);
+  // total units = 2 + 3 + 1 = 6, estimated = 60 + 6*5 = 90
+  assert.equal(task.estimatedTimeSeconds, 90);
+  assert.equal(task.lines[0].fromLocationId, 10);
+  assert.equal(task.lines[1].fromLocationId, 11);
+  assert.equal(task.lines[2].fromLocationId, 12);
 });
 
 test("buildPurchaseOrderPutawayTaskSpecs groups by destination location zone", () => {

@@ -114,9 +114,17 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
         t.id,
         t.type,
         t.status,
-        z.name AS zone_name
+        COALESCE(z.name, line_zone.name) AS zone_name
       FROM tasks t
-      JOIN zones z ON z.id = t.zone_id
+      LEFT JOIN zones z ON z.id = t.zone_id
+      LEFT JOIN LATERAL (
+        SELECT zn.name
+        FROM task_lines tl
+        JOIN locations loc ON loc.id = COALESCE(tl.from_location_id, tl.to_location_id)
+        JOIN zones zn ON zn.id = loc.zone_id
+        WHERE tl.task_id = t.id
+        LIMIT 1
+      ) line_zone ON t.zone_id IS NULL
       WHERE t.assigned_operator_id = o.id
         AND t.status IN ('assigned'::task_status, 'in_progress'::task_status, 'paused'::task_status)
       ORDER BY
@@ -190,6 +198,11 @@ const getLaborZoneWorkload = async ({ warehouseId = null, page = 1, limit = 50 }
       COALESCE(AVG(t.priority), 0)::double precision AS "avgPriority"
     FROM zones z
     LEFT JOIN tasks t ON t.zone_id = z.id
+      OR (t.zone_id IS NULL AND EXISTS (
+        SELECT 1 FROM task_lines tl
+        JOIN locations l ON l.id = COALESCE(tl.from_location_id, tl.to_location_id)
+        WHERE tl.task_id = t.id AND l.zone_id = z.id
+      ))
     ${whereClause}
     GROUP BY z.id
     ORDER BY "createdTasks" DESC, "inProgressTasks" DESC, z.name ASC

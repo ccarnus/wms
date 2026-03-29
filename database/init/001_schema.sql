@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   type task_type NOT NULL,
   priority INT NOT NULL DEFAULT 0 CHECK (priority >= 0),
   status task_status NOT NULL DEFAULT 'created',
-  zone_id UUID NOT NULL REFERENCES zones(id) ON DELETE RESTRICT,
+  zone_id UUID REFERENCES zones(id) ON DELETE RESTRICT,
   assigned_operator_id UUID REFERENCES operators(id) ON DELETE SET NULL,
   source_document_id TEXT NOT NULL,
   estimated_time_seconds INT NOT NULL CHECK (estimated_time_seconds >= 0),

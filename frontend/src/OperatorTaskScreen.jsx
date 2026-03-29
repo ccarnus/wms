@@ -298,28 +298,35 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
           </span>
         </div>
 
-        <div className="rounded-xl border border-black/10 bg-canvas p-3">
-          <p className="text-xs uppercase tracking-wide text-black/60">Zone</p>
-          <p className="text-sm font-semibold">
-            {task.zone?.name || "Unknown zone"}
-            {task.zone?.type ? ` (${task.zone.type})` : ""}
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-wide text-black/60">Lines</p>
+        <div className="space-y-3">
+          <p className="text-xs uppercase tracking-wide text-black/60">Lines by Zone</p>
           {Array.isArray(task.lines) && task.lines.length > 0 ? (
-            <ul className="space-y-2">
-              {task.lines.map((line) => (
-                <li key={line.id} className="rounded-xl border border-black/10 p-3">
-                  <p className="text-sm font-semibold">
-                    {line.sku}{line.skuDescription ? ` - ${line.skuDescription}` : ""}
-                  </p>
-                  <p className="mt-1 text-sm">Quantity: {line.quantity}</p>
-                  <p className="mt-1 text-xs text-black/70">Location: {deriveDisplayLocation(line)}</p>
-                </li>
-              ))}
-            </ul>
+            (() => {
+              const linesByZone = new Map();
+              for (const line of task.lines) {
+                const zoneKey = line.zoneName || task.zone?.name || "Unknown zone";
+                if (!linesByZone.has(zoneKey)) linesByZone.set(zoneKey, []);
+                linesByZone.get(zoneKey).push(line);
+              }
+              return [...linesByZone.entries()].map(([zoneName, zoneLines]) => (
+                <div key={zoneName} className="space-y-2">
+                  <div className="rounded-lg border border-accent/20 bg-accent/5 px-3 py-1.5">
+                    <p className="text-xs font-bold text-accent uppercase tracking-wide">{zoneName}</p>
+                  </div>
+                  <ul className="space-y-2">
+                    {zoneLines.map((line) => (
+                      <li key={line.id} className="rounded-xl border border-black/10 p-3">
+                        <p className="text-sm font-semibold">
+                          {line.sku}{line.skuDescription ? ` - ${line.skuDescription}` : ""}
+                        </p>
+                        <p className="mt-1 text-sm">Quantity: {line.quantity}</p>
+                        <p className="mt-1 text-xs text-black/70">Location: {deriveDisplayLocation(line)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ));
+            })()
           ) : (
             <p className="text-sm text-black/60">No line details found for this task.</p>
           )}
@@ -694,7 +701,14 @@ function TaskGroup({ label, tasks, onSelect, accentColor }) {
                 <div className="min-w-0">
                   <p className="text-sm font-bold capitalize">{String(task.type).replace("_", " ")}</p>
                   <p className="mt-0.5 text-xs text-black/60">
-                    {task.zone?.name || "Unknown zone"}
+                    {(() => {
+                      if (task.zone?.name) return task.zone.name;
+                      if (Array.isArray(task.lines) && task.lines.length > 0) {
+                        const zoneNames = [...new Set(task.lines.map((l) => l.zoneName).filter(Boolean))];
+                        return zoneNames.length > 0 ? zoneNames.join(", ") : "Unknown zone";
+                      }
+                      return "Unknown zone";
+                    })()}
                     {totalQty > 0 ? ` · ${totalQty} units` : ""}
                   </p>
                 </div>

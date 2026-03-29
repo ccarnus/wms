@@ -436,7 +436,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-black/60">
-                      Zone: {zoneNameMap[task.zoneId] || "\u2014"} &middot; {task.sourceDocumentId}
+                      Zone: {zoneNameMap[task.zoneId] || (task.zoneId ? "\u2014" : "Multiple")} &middot; {task.sourceDocumentId}
                     </p>
                     <div className="mt-2">
                       <select
@@ -485,7 +485,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                             {task.priority}
                           </span>
                         </td>
-                        <td className="px-2 py-2">{zoneNameMap[task.zoneId] || "\u2014"}</td>
+                        <td className="px-2 py-2">{zoneNameMap[task.zoneId] || (task.zoneId ? "\u2014" : "Multiple")}</td>
                         <td className="px-2 py-2 text-xs text-black/60">{task.sourceDocumentId}</td>
                         <td className="px-2 py-2 text-xs">{formatSeconds(task.estimatedTimeSeconds)}</td>
                         <td className="px-2 py-2">
