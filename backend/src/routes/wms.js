@@ -1,6 +1,7 @@
 const express = require("express");
 const { pool, query } = require("../db");
 const { publishRealtimeEvent } = require("../realtime/eventBus");
+const { reevaluatePendingOrders } = require("../services/salesOrderService");
 
 const router = express.Router();
 
@@ -192,6 +193,13 @@ router.post("/movements", async (req, res, next) => {
       type: "INVENTORY_UPDATED",
       payload: { movementId: movementInsert.rows[0].id, movementType }
     });
+
+    // When stock arrives (INBOUND/TRANSFER), re-evaluate pending sales orders
+    if (movementType === "INBOUND" || movementType === "TRANSFER") {
+      reevaluatePendingOrders().catch((err) => {
+        console.error("[wms] Failed to re-evaluate pending orders after movement", err);
+      });
+    }
 
     res.status(201).json(movementInsert.rows[0]);
   } catch (error) {

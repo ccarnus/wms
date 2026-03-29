@@ -102,6 +102,8 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   const [operatorRows, setOperatorRows] = useState([]);
   const [zoneRows, setZoneRows] = useState([]);
   const [pendingTasks, setPendingTasks] = useState([]);
+  const [inventoryAlerts, setInventoryAlerts] = useState([]);
+  const [pendingOrders, setPendingOrders] = useState([]);
   const [assigningTaskId, setAssigningTaskId] = useState(null);
   const [assignError, setAssignError] = useState("");
   const [operatorPage, setOperatorPage] = useState(1);
@@ -113,17 +115,21 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
     }
 
     try {
-      const [overviewResponse, operatorResponse, zoneResponse, pendingResponse] = await Promise.all([
+      const [overviewResponse, operatorResponse, zoneResponse, pendingResponse, alertsResponse, pendingOrdersResponse] = await Promise.all([
         fetchJson("/api/labor/overview", jwtToken, onAuthError),
         fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
         fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
-        fetchJson(`/api/tasks?${toQueryString({ status: "created", page: 1, limit: 200 })}`, jwtToken, onAuthError)
+        fetchJson(`/api/tasks?${toQueryString({ status: "created", page: 1, limit: 200 })}`, jwtToken, onAuthError),
+        fetchJson(`/api/sales-orders/alerts?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
+        fetchJson(`/api/sales-orders?${toQueryString({ status: "pending_inventory", page: 1, limit: 200 })}`, jwtToken, onAuthError)
       ]);
 
       setOverview(overviewResponse || null);
       setOperatorRows(Array.isArray(operatorResponse?.items) ? operatorResponse.items : []);
       setZoneRows(Array.isArray(zoneResponse?.items) ? zoneResponse.items : []);
       setPendingTasks(Array.isArray(pendingResponse?.items) ? pendingResponse.items : []);
+      setInventoryAlerts(Array.isArray(alertsResponse?.items) ? alertsResponse.items : []);
+      setPendingOrders(Array.isArray(pendingOrdersResponse?.items) ? pendingOrdersResponse.items : []);
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error.message || "Failed to load labor dashboard");
@@ -192,6 +198,8 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
     socket.on("TASK_ASSIGNED", refreshFromSocketEvent);
     socket.on("TASK_UPDATED", refreshFromSocketEvent);
     socket.on("OPERATOR_STATUS_UPDATED", refreshFromSocketEvent);
+    socket.on("SALES_ORDER_UPDATED", refreshFromSocketEvent);
+    socket.on("INVENTORY_ALERT", refreshFromSocketEvent);
 
     return () => {
       socket.disconnect();
@@ -284,6 +292,66 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                 </article>
               ))}
         </section>
+
+        {inventoryAlerts.length > 0 && (
+          <section className="rounded-2xl border border-signal/30 bg-signal/5 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-black text-signal">Inventory Alerts</h2>
+              <span className="rounded-full border border-signal/30 bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal">
+                {inventoryAlerts.length} shortage{inventoryAlerts.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <p className="mb-3 text-xs text-black/60">
+              Orders held — insufficient pick inventory. Stock must be replenished before these orders can be released.
+            </p>
+            <div className="space-y-2">
+              {inventoryAlerts.map((alert) => (
+                <article key={alert.id} className="rounded-xl border border-signal/20 bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold">{alert.sourceDocumentId}</p>
+                      <p className="mt-0.5 text-xs text-black/60">
+                        SKU: <span className="font-semibold">{alert.sku}</span>
+                        {alert.skuDescription ? ` — ${alert.skuDescription}` : ""}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-signal/30 bg-signal/10 px-2 py-0.5 text-[10px] font-bold text-signal">
+                      SHORT
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-canvas p-1.5">
+                      <p className="text-lg font-black">{alert.requiredQuantity}</p>
+                      <p className="text-[10px] text-black/50">Required</p>
+                    </div>
+                    <div className="rounded-lg bg-canvas p-1.5">
+                      <p className="text-lg font-black">{alert.availableQuantity}</p>
+                      <p className="text-[10px] text-black/50">Available</p>
+                    </div>
+                    <div className="rounded-lg bg-signal/10 p-1.5">
+                      <p className="text-lg font-black text-signal">{alert.shortage}</p>
+                      <p className="text-[10px] text-signal/70">Shortage</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {pendingOrders.length > 0 && inventoryAlerts.length === 0 && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-black text-amber-700">Pending Orders</h2>
+              <span className="rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                {pendingOrders.length}
+              </span>
+            </div>
+            <p className="text-xs text-black/60">
+              Orders waiting for inventory to become available.
+            </p>
+          </section>
+        )}
 
         <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">

@@ -72,12 +72,12 @@ Workers (separate Node processes, same Docker image as backend):
 - **Operator role** gets a dedicated mobile-first layout (no sidebar). The operator view is exclusive to the `operator` role — other roles do not see it.
 - `OperatorTaskScreen` shows a task list (in_progress, paused, assigned) with tap-to-view detail. Tasks are not auto-started; the operator must explicitly click "Start Task". Auto-refresh is websocket-only (no polling or manual refresh button). Debug info (API URL, operator ID) is in a settings panel accessed via the user avatar.
 - API calls use native `fetch` with `Authorization: Bearer` header. No axios.
-- Real-time via `socket.io-client`. Events: `TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`.
+- Real-time via `socket.io-client`. Events: `TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`, `SALES_ORDER_UPDATED`, `INVENTORY_ALERT`.
 - Tailwind custom theme colors: `canvas` (bg), `ink` (text), `accent` (teal/primary), `signal` (orange/error).
 
 ### Database (`database/init/`)
 
-Single `001_schema.sql` file contains the complete schema: all enums, tables (warehouses, zones, locations, skus, inventory, movements, operators, tasks, task_lines, users, integrations, labor_daily_metrics, audit logs), indexes, trigger function, and triggers.
+Single `001_schema.sql` file contains the complete schema: all enums, tables (warehouses, zones, locations, skus, inventory, movements, operators, tasks, task_lines, sales_orders, sales_order_lines, inventory_alerts, users, integrations, labor_daily_metrics, audit logs), indexes, trigger function, and triggers.
 
 ### Authentication
 
@@ -93,6 +93,8 @@ Single `001_schema.sql` file contains the complete schema: all enums, tables (wa
 - **Optimistic locking**: Tasks have a `version` field. Status transitions require the current version and increment it (prevents concurrent update conflicts).
 - **Realtime event flow**: Service → `publishRealtimeEvent()` → Redis channel → Socket.IO server → broadcast to room → frontend React state update.
 - **Task lifecycle**: `created → assigned → in_progress → completed/cancelled/failed`, with `paused` as a valid intermediate state from `in_progress`.
+- **Sales order lifecycle**: `pending_inventory → ready → released → completed/cancelled`. External systems send sales orders without pick locations — the WMS resolves pick locations from inventory. Orders with insufficient stock are held as `pending_inventory` with inventory alerts. When inventory is replenished (INBOUND/TRANSFER movements), pending orders are automatically re-evaluated.
+- **Inventory resolution strategy**: For each order line, the WMS finds the best pick location (active location in a pick zone with sufficient stock, preferring highest quantity to consolidate picks). If no single location can fulfill a line, the order is held and an `INVENTORY_ALERT` realtime event + `SALES_ORDER_SHORT` integration event are published.
 
 ## Environment Variables
 

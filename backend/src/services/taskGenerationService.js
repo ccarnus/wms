@@ -3,9 +3,9 @@ const { Task } = require("../models/taskModel");
 const {
   ORDER_EVENT_TYPES,
   buildPurchaseOrderPutawayTaskSpecs,
-  buildSalesOrderPickTaskSpecs,
   normalizeTaskGenerationEvent
 } = require("./taskGenerationLogic");
+const { createSalesOrder } = require("./salesOrderService");
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -30,13 +30,6 @@ const getTaskGenerationConfig = () => ({
 });
 
 const buildTaskSpecList = (normalizedEvent, zoneResolver, config) => {
-  if (normalizedEvent.type === ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK) {
-    return buildSalesOrderPickTaskSpecs(normalizedEvent, zoneResolver, {
-      baseTimeSeconds: config.pickBaseTimeSeconds,
-      timePerUnitSeconds: config.pickTimePerUnitSeconds
-    });
-  }
-
   if (normalizedEvent.type === ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED) {
     return buildPurchaseOrderPutawayTaskSpecs(normalizedEvent, zoneResolver, {
       baseTimeSeconds: config.putawayBaseTimeSeconds,
@@ -122,10 +115,6 @@ const createTaskWithLines = async (client, taskSpec) => {
 };
 
 const extractLocationIds = (normalizedEvent) => {
-  if (normalizedEvent.type === ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK) {
-    return normalizedEvent.lines.map((line) => line.pickLocationId);
-  }
-
   if (normalizedEvent.type === ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED) {
     return normalizedEvent.lines.map((line) => line.destinationLocationId);
   }
@@ -135,6 +124,21 @@ const extractLocationIds = (normalizedEvent) => {
 
 const generateTasksForOrderEvent = async (eventPayload) => {
   const normalizedEvent = normalizeTaskGenerationEvent(eventPayload);
+
+  // Sales orders go through the new salesOrderService which handles
+  // inventory resolution, shortage detection, and task creation.
+  if (normalizedEvent.type === ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK) {
+    const result = await createSalesOrder(normalizedEvent);
+    return {
+      eventKey: normalizedEvent.eventKey,
+      skipped: result.skipped,
+      reason: result.reason,
+      salesOrderId: result.salesOrderId,
+      salesOrderStatus: result.status,
+      tasks: result.releasedTaskId ? [{ id: result.releasedTaskId }] : []
+    };
+  }
+
   const client = await pool.connect();
   let inTransaction = false;
 

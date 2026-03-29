@@ -23,41 +23,78 @@ test("calculatePickPriority increases as ship date gets closer", () => {
   assert.equal(calculatePickPriority("2026-03-01T00:00:00.000Z", now), 100);
 });
 
-test("normalizeTaskGenerationEvent validates and normalizes sales order events", () => {
+test("normalizeTaskGenerationEvent validates and normalizes sales order events without pickLocationId", () => {
   const normalized = normalizeTaskGenerationEvent({
     type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
     salesOrderId: "SO-123",
     shipDate: "2026-03-10T12:00:00.000Z",
-    lines: [{ skuId: 1, quantity: 2, pickLocationId: 101 }]
+    lines: [{ skuId: 1, quantity: 2 }]
   });
 
   assert.equal(normalized.type, ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK);
   assert.equal(normalized.sourceDocumentId, "SO-SO-123");
   assert.equal(normalized.lines.length, 1);
-  assert.equal(normalized.lines[0].pickLocationId, 101);
+  assert.equal(normalized.lines[0].skuId, 1);
+  assert.equal(normalized.lines[0].quantity, 2);
+  assert.equal(normalized.lines[0].pickLocationId, undefined);
+  assert.ok(typeof normalized.priority === "number");
   assert.match(normalized.eventKey, /^sales_order_ready_for_pick--SO-SO-123--/);
 });
 
-test("buildSalesOrderPickTaskSpecs creates one task per order with all lines", () => {
+test("normalizeTaskGenerationEvent rejects sales order with missing skuId or quantity", () => {
+  assert.throws(
+    () => normalizeTaskGenerationEvent({
+      type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
+      salesOrderId: "SO-BAD",
+      shipDate: "2026-03-10T12:00:00.000Z",
+      lines: [{ quantity: 2 }]
+    }),
+    (error) => error?.statusCode === 400 && /skuId/.test(error.message)
+  );
+
+  assert.throws(
+    () => normalizeTaskGenerationEvent({
+      type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
+      salesOrderId: "SO-BAD",
+      shipDate: "2026-03-10T12:00:00.000Z",
+      lines: [{ skuId: 1 }]
+    }),
+    (error) => error?.statusCode === 400 && /quantity/.test(error.message)
+  );
+});
+
+test("normalizeTaskGenerationEvent includes priority based on ship date", () => {
   const normalized = normalizeTaskGenerationEvent({
     type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
-    salesOrderId: "SO-777",
-    shipDate: "2026-03-02T00:00:00.000Z",
-    lines: [
-      { skuId: 1, quantity: 2, pickLocationId: 10 },
-      { skuId: 2, quantity: 3, pickLocationId: 11 },
-      { skuId: 3, quantity: 1, pickLocationId: 12 }
-    ]
+    salesOrderId: "SO-PRI",
+    shipDate: new Date(Date.now() + 86400000).toISOString(),
+    lines: [{ skuId: 1, quantity: 1 }]
   });
 
-  const zoneMap = new Map([
-    [10, "zone-a"],
-    [11, "zone-a"],
-    [12, "zone-b"]
-  ]);
-  const zoneResolver = (locationId) => zoneMap.get(locationId);
+  assert.ok(normalized.priority >= 50);
+  assert.ok(normalized.priority <= 100);
+});
 
-  const taskSpecs = buildSalesOrderPickTaskSpecs(normalized, zoneResolver, {
+test("buildSalesOrderPickTaskSpecs creates one task from resolved lines", () => {
+  const event = {
+    type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
+    sourceDocumentId: "SO-777",
+    shipDate: "2026-03-02T00:00:00.000Z",
+    priority: 90,
+    lines: [
+      { skuId: 1, quantity: 2 },
+      { skuId: 2, quantity: 3 },
+      { skuId: 3, quantity: 1 }
+    ]
+  };
+
+  const resolvedLines = [
+    { skuId: 1, quantity: 2, pickLocationId: 10 },
+    { skuId: 2, quantity: 3, pickLocationId: 11 },
+    { skuId: 3, quantity: 1, pickLocationId: 12 }
+  ];
+
+  const taskSpecs = buildSalesOrderPickTaskSpecs(event, resolvedLines, {
     baseTimeSeconds: 60,
     timePerUnitSeconds: 5,
     now: new Date("2026-03-01T00:00:00.000Z")
@@ -104,18 +141,4 @@ test("buildPurchaseOrderPutawayTaskSpecs groups by destination location zone", (
   assert.equal(taskSpecs[0].priority, 55);
   assert.equal(taskSpecs[0].sourceDocumentId, "PO-PO-456");
   assert.equal(taskSpecs[0].lines[0].toLocationId > 0, true);
-});
-
-test("buildSalesOrderPickTaskSpecs rejects missing location to zone mapping", () => {
-  const normalized = normalizeTaskGenerationEvent({
-    type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
-    salesOrderId: "SO-888",
-    shipDate: "2026-03-01T00:00:00.000Z",
-    lines: [{ skuId: 1, quantity: 1, pickLocationId: 999 }]
-  });
-
-  assert.throws(
-    () => buildSalesOrderPickTaskSpecs(normalized, () => null),
-    (error) => error?.statusCode === 400 && /No zone mapping/.test(error.message)
-  );
 });

@@ -11,6 +11,7 @@ const orderEventsRoutes = require("./routes/orderEvents");
 const operatorsRoutes = require("./routes/operators");
 const laborRoutes = require("./routes/labor");
 const usersRoutes = require("./routes/users");
+const salesOrdersRoutes = require("./routes/salesOrders");
 const integrationsRoutes = require("./routes/integrations");
 const integrationWebhookRoutes = require("./routes/integrationWebhook");
 const warehousesRoutes = require("./routes/warehouses");
@@ -57,6 +58,10 @@ app.get("/", (_req, res) => {
       "/api/labor/zone-workload",
       "/api/users",
       "/api/auth/change-password",
+      "/api/sales-orders",
+      "/api/sales-orders/alerts",
+      "/api/sales-orders/reevaluate",
+      "/api/sales-orders/:salesOrderId",
       "/api/integrations",
       "/api/integrations/connector-types",
       "/api/webhook/:connectorType",
@@ -80,6 +85,7 @@ app.use("/api/operators", operatorsRoutes);
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/labor", laborRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/sales-orders", salesOrdersRoutes);
 app.use("/api/integrations", integrationsRoutes);
 app.use("/api/warehouses", warehousesRoutes);
 app.use("/api/zones", zonesRoutes);

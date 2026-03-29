@@ -53,6 +53,20 @@ DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'integration_ev
   CREATE TYPE integration_event_status AS ENUM ('pending', 'success', 'failed');
 END IF; END$$;
 
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sales_order_status') THEN
+  CREATE TYPE sales_order_status AS ENUM (
+    'pending_inventory', 'ready', 'released', 'completed', 'cancelled'
+  );
+END IF; END$$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sales_order_line_status') THEN
+  CREATE TYPE sales_order_line_status AS ENUM ('pending', 'resolved', 'short');
+END IF; END$$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inventory_alert_status') THEN
+  CREATE TYPE inventory_alert_status AS ENUM ('active', 'resolved', 'dismissed');
+END IF; END$$;
+
 -- ── Core tables ─────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS warehouses (
@@ -221,6 +235,45 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── Sales Orders ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS sales_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT NOT NULL,
+  source_document_id TEXT NOT NULL UNIQUE,
+  status sales_order_status NOT NULL DEFAULT 'pending_inventory',
+  ship_date TIMESTAMPTZ NOT NULL,
+  priority INT NOT NULL DEFAULT 0 CHECK (priority >= 0),
+  released_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+  event_key TEXT UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_order_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sales_order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  sku_id INT NOT NULL REFERENCES skus(id) ON DELETE RESTRICT,
+  quantity INT NOT NULL CHECK (quantity > 0),
+  pick_location_id INT REFERENCES locations(id) ON DELETE RESTRICT,
+  available_quantity INT NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
+  status sales_order_line_status NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS inventory_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sales_order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  sales_order_line_id UUID NOT NULL REFERENCES sales_order_lines(id) ON DELETE CASCADE,
+  sku_id INT NOT NULL REFERENCES skus(id) ON DELETE RESTRICT,
+  required_quantity INT NOT NULL CHECK (required_quantity > 0),
+  available_quantity INT NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
+  shortage INT NOT NULL GENERATED ALWAYS AS (required_quantity - available_quantity) STORED,
+  status inventory_alert_status NOT NULL DEFAULT 'active',
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── Integrations ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS integrations (
@@ -286,6 +339,16 @@ CREATE INDEX IF NOT EXISTS idx_labor_daily_metrics_operator_id ON labor_daily_me
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_operator_id ON users(operator_id) WHERE operator_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_status ON sales_orders(status);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_source_document_id ON sales_orders(source_document_id);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_pending ON sales_orders(priority DESC, created_at ASC)
+  WHERE status = 'pending_inventory';
+CREATE INDEX IF NOT EXISTS idx_sales_order_lines_sales_order_id ON sales_order_lines(sales_order_id);
+CREATE INDEX IF NOT EXISTS idx_sales_order_lines_sku_id ON sales_order_lines(sku_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_alerts_status ON inventory_alerts(status)
+  WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_inventory_alerts_sales_order_id ON inventory_alerts(sales_order_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_alerts_sku_id ON inventory_alerts(sku_id);
 CREATE INDEX IF NOT EXISTS idx_integrations_connector_type ON integrations(connector_type);
 CREATE INDEX IF NOT EXISTS idx_integrations_enabled ON integrations(is_enabled) WHERE is_enabled = true;
 CREATE INDEX IF NOT EXISTS idx_integrations_inbound_api_key ON integrations(inbound_api_key) WHERE inbound_api_key IS NOT NULL;
@@ -327,6 +390,10 @@ CREATE TRIGGER trg_tasks_set_updated_at
 DROP TRIGGER IF EXISTS trg_users_set_updated_at ON users;
 CREATE TRIGGER trg_users_set_updated_at
   BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
+
+DROP TRIGGER IF EXISTS trg_sales_orders_set_updated_at ON sales_orders;
+CREATE TRIGGER trg_sales_orders_set_updated_at
+  BEFORE UPDATE ON sales_orders FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
 
 DROP TRIGGER IF EXISTS trg_integrations_set_updated_at ON integrations;
 CREATE TRIGGER trg_integrations_set_updated_at

@@ -81,20 +81,16 @@ const normalizeSalesOrderEvent = (payload) => {
   const lines = payload.lines.map((line, index) => {
     const skuId = parsePositiveInteger(line.skuId, `lines[${index}].skuId`);
     const quantity = parsePositiveInteger(line.quantity, `lines[${index}].quantity`);
-    const pickLocationId = parsePositiveInteger(
-      line.pickLocationId ?? line.fromLocationId,
-      `lines[${index}].pickLocationId`
-    );
 
     return {
       skuId,
-      quantity,
-      pickLocationId
+      quantity
     };
   });
 
   const sourceDocumentId = `SO-${salesOrderId}`;
   const providedEventKey = payload.eventKey ? String(payload.eventKey).trim() : "";
+  const priority = calculatePickPriority(shipDate);
 
   return {
     type: ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK,
@@ -103,6 +99,7 @@ const normalizeSalesOrderEvent = (payload) => {
       providedEventKey || createEventKey(ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK, sourceDocumentId),
     salesOrderId,
     shipDate,
+    priority,
     lines
   };
 };
@@ -187,7 +184,17 @@ const groupLinesByZone = (lines, zoneResolver, locationFieldName) => {
   return grouped;
 };
 
-const buildSalesOrderPickTaskSpecs = (event, zoneResolver, options = {}) => {
+/**
+ * Build a pick task spec from resolved sales order lines.
+ * Called by salesOrderService after inventory resolution — lines already
+ * have pickLocationId assigned by the WMS.
+ *
+ * NOTE: This function is no longer called from buildTaskSpecList for
+ * sales orders. Sales orders now flow through salesOrderService which
+ * handles inventory resolution and task creation directly. This function
+ * is kept for backward compatibility and testing.
+ */
+const buildSalesOrderPickTaskSpecs = (event, resolvedLines, options = {}) => {
   const baseTimeSeconds = parsePositiveInteger(
     options.baseTimeSeconds ?? DEFAULT_PICK_BASE_TIME_SECONDS,
     "baseTimeSeconds"
@@ -196,17 +203,9 @@ const buildSalesOrderPickTaskSpecs = (event, zoneResolver, options = {}) => {
     options.timePerUnitSeconds ?? DEFAULT_PICK_TIME_PER_UNIT_SECONDS,
     "timePerUnitSeconds"
   );
-  const priority = calculatePickPriority(event.shipDate, options.now ?? new Date());
-
-  // Validate all locations have zone mappings (but don't split by zone)
-  for (const line of event.lines) {
-    const zoneId = zoneResolver(line.pickLocationId);
-    if (!zoneId) {
-      throw createHttpError(400, `No zone mapping found for location ${line.pickLocationId}`);
-    }
-  }
-
-  const totalUnits = event.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const priority = event.priority ?? calculatePickPriority(event.shipDate, options.now ?? new Date());
+  const lines = resolvedLines || event.lines;
+  const totalUnits = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   return [{
     type: "pick",
@@ -214,9 +213,9 @@ const buildSalesOrderPickTaskSpecs = (event, zoneResolver, options = {}) => {
     zoneId: null,
     sourceDocumentId: event.sourceDocumentId,
     estimatedTimeSeconds: calculateEstimatedTimeSeconds(totalUnits, baseTimeSeconds, timePerUnitSeconds),
-    lines: event.lines.map((line) => ({
+    lines: lines.map((line) => ({
       skuId: line.skuId,
-      fromLocationId: line.pickLocationId,
+      fromLocationId: line.pickLocationId || null,
       toLocationId: null,
       quantity: line.quantity,
       status: "created"
