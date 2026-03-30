@@ -5,6 +5,14 @@ const ORDER_EVENT_TYPES = Object.freeze({
   PURCHASE_ORDER_RECEIVED: "purchase_order_received"
 });
 
+const PUTAWAY_STRATEGIES = Object.freeze({
+  RANDOM: "RANDOM",
+  CONSOLIDATION: "CONSOLIDATION",
+  EMPTY: "EMPTY"
+});
+
+const PUTAWAY_STRATEGY_SET = new Set(Object.values(PUTAWAY_STRATEGIES));
+
 const DEFAULT_PICK_BASE_TIME_SECONDS = 90;
 const DEFAULT_PICK_TIME_PER_UNIT_SECONDS = 12;
 const DEFAULT_PUTAWAY_BASE_TIME_SECONDS = 75;
@@ -110,6 +118,14 @@ const normalizePurchaseOrderEvent = (payload) => {
     throw createHttpError(400, "purchaseOrderId is required");
   }
 
+  const strategyRaw = String(payload.strategy || "").trim().toUpperCase();
+  if (!strategyRaw) {
+    throw createHttpError(400, "strategy is required (RANDOM, CONSOLIDATION, or EMPTY)");
+  }
+  if (!PUTAWAY_STRATEGY_SET.has(strategyRaw)) {
+    throw createHttpError(400, `strategy must be one of: ${[...PUTAWAY_STRATEGY_SET].join(", ")}`);
+  }
+
   if (!Array.isArray(payload.lines) || payload.lines.length === 0) {
     throw createHttpError(400, "lines must be a non-empty array");
   }
@@ -117,21 +133,8 @@ const normalizePurchaseOrderEvent = (payload) => {
   const lines = payload.lines.map((line, index) => {
     const skuId = parsePositiveInteger(line.skuId, `lines[${index}].skuId`);
     const quantity = parsePositiveInteger(line.quantity, `lines[${index}].quantity`);
-    const destinationLocationId = parsePositiveInteger(
-      line.destinationLocationId ?? line.toLocationId,
-      `lines[${index}].destinationLocationId`
-    );
-    const fromLocationId =
-      line.fromLocationId === undefined || line.fromLocationId === null
-        ? null
-        : parsePositiveInteger(line.fromLocationId, `lines[${index}].fromLocationId`);
 
-    return {
-      skuId,
-      quantity,
-      destinationLocationId,
-      fromLocationId
-    };
+    return { skuId, quantity };
   });
 
   const sourceDocumentId = `PO-${purchaseOrderId}`;
@@ -143,6 +146,7 @@ const normalizePurchaseOrderEvent = (payload) => {
     eventKey:
       providedEventKey || createEventKey(ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED, sourceDocumentId),
     purchaseOrderId,
+    strategy: strategyRaw,
     receivedAt: payload.receivedAt ? parseDate(payload.receivedAt, "receivedAt").toISOString() : null,
     lines
   };
@@ -223,7 +227,14 @@ const buildSalesOrderPickTaskSpecs = (event, resolvedLines, options = {}) => {
   }];
 };
 
-const buildPurchaseOrderPutawayTaskSpecs = (event, zoneResolver, options = {}) => {
+/**
+ * Build putaway task specs from resolved lines.
+ * Called after putawayResolutionService has assigned destination locations.
+ * Groups lines by zone and creates one task per zone.
+ *
+ * resolvedLines: [{ skuId, quantity, destinationLocationId, zoneId }]
+ */
+const buildPurchaseOrderPutawayTaskSpecs = (event, resolvedLines, options = {}) => {
   const baseTimeSeconds = parsePositiveInteger(
     options.baseTimeSeconds ?? DEFAULT_PUTAWAY_BASE_TIME_SECONDS,
     "baseTimeSeconds"
@@ -234,10 +245,17 @@ const buildPurchaseOrderPutawayTaskSpecs = (event, zoneResolver, options = {}) =
   );
   const priority = parsePositiveInteger(options.priority ?? DEFAULT_PUTAWAY_PRIORITY, "priority");
 
-  const groupedByZone = groupLinesByZone(event.lines, zoneResolver, "destinationLocationId");
+  const grouped = new Map();
+  for (const line of resolvedLines) {
+    if (!grouped.has(line.zoneId)) {
+      grouped.set(line.zoneId, []);
+    }
+    grouped.get(line.zoneId).push(line);
+  }
+
   const taskSpecs = [];
 
-  for (const [zoneId, lines] of groupedByZone.entries()) {
+  for (const [zoneId, lines] of grouped.entries()) {
     const totalUnits = lines.reduce((sum, line) => sum + line.quantity, 0);
 
     taskSpecs.push({
@@ -248,7 +266,7 @@ const buildPurchaseOrderPutawayTaskSpecs = (event, zoneResolver, options = {}) =
       estimatedTimeSeconds: calculateEstimatedTimeSeconds(totalUnits, baseTimeSeconds, timePerUnitSeconds),
       lines: lines.map((line) => ({
         skuId: line.skuId,
-        fromLocationId: line.fromLocationId ?? null,
+        fromLocationId: null,
         toLocationId: line.destinationLocationId,
         quantity: line.quantity,
         status: "created"
@@ -266,6 +284,7 @@ module.exports = {
   DEFAULT_PUTAWAY_PRIORITY,
   DEFAULT_PUTAWAY_TIME_PER_UNIT_SECONDS,
   ORDER_EVENT_TYPES,
+  PUTAWAY_STRATEGIES,
   buildPurchaseOrderPutawayTaskSpecs,
   buildSalesOrderPickTaskSpecs,
   calculateEstimatedTimeSeconds,

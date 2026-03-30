@@ -6,6 +6,7 @@ const {
   normalizeTaskGenerationEvent
 } = require("./taskGenerationLogic");
 const { createSalesOrder } = require("./salesOrderService");
+const { resolvePutawayLocations } = require("./putawayResolutionService");
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -29,42 +30,6 @@ const getTaskGenerationConfig = () => ({
   putawayPriority: parsePositiveIntegerEnv(process.env.TASK_PUTAWAY_PRIORITY, 60)
 });
 
-const buildTaskSpecList = (normalizedEvent, zoneResolver, config) => {
-  if (normalizedEvent.type === ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED) {
-    return buildPurchaseOrderPutawayTaskSpecs(normalizedEvent, zoneResolver, {
-      baseTimeSeconds: config.putawayBaseTimeSeconds,
-      timePerUnitSeconds: config.putawayTimePerUnitSeconds,
-      priority: config.putawayPriority
-    });
-  }
-
-  throw createHttpError(400, `Unsupported event type '${normalizedEvent.type}'`);
-};
-
-const resolveZoneByLocationMap = async (client, locationIds) => {
-  const uniqueLocationIds = [...new Set(locationIds)];
-  if (uniqueLocationIds.length === 0) {
-    throw createHttpError(400, "At least one location is required");
-  }
-
-  const { rows } = await client.query(
-    `SELECT
-      l.id AS location_id,
-      l.zone_id
-    FROM locations l
-    WHERE l.id = ANY($1::int[])`,
-    [uniqueLocationIds]
-  );
-
-  const locationZoneMap = new Map(rows.map((row) => [Number(row.location_id), row.zone_id]));
-  const missingLocationIds = uniqueLocationIds.filter((locationId) => !locationZoneMap.has(locationId));
-
-  if (missingLocationIds.length > 0) {
-    throw createHttpError(400, `Missing zone mapping for location IDs: ${missingLocationIds.join(", ")}`);
-  }
-
-  return locationZoneMap;
-};
 
 const createTaskWithLines = async (client, taskSpec) => {
   const taskInsertResult = await client.query(
@@ -114,18 +79,10 @@ const createTaskWithLines = async (client, taskSpec) => {
   return Task.fromRow(taskRow);
 };
 
-const extractLocationIds = (normalizedEvent) => {
-  if (normalizedEvent.type === ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED) {
-    return normalizedEvent.lines.map((line) => line.destinationLocationId);
-  }
-
-  return [];
-};
-
 const generateTasksForOrderEvent = async (eventPayload) => {
   const normalizedEvent = normalizeTaskGenerationEvent(eventPayload);
 
-  // Sales orders go through the new salesOrderService which handles
+  // Sales orders go through salesOrderService which handles
   // inventory resolution, shortage detection, and task creation.
   if (normalizedEvent.type === ORDER_EVENT_TYPES.SALES_ORDER_READY_FOR_PICK) {
     const result = await createSalesOrder(normalizedEvent);
@@ -175,11 +132,25 @@ const generateTasksForOrderEvent = async (eventPayload) => {
       };
     }
 
-    const locationIds = extractLocationIds(normalizedEvent);
-    const zoneByLocationId = await resolveZoneByLocationMap(client, locationIds);
-    const zoneResolver = (locationId) => zoneByLocationId.get(locationId);
+    // Resolve putaway destination locations using WMS strategy
+    const resolution = await resolvePutawayLocations(
+      client, normalizedEvent.lines, normalizedEvent.strategy
+    );
+
+    if (!resolution.allResolved) {
+      const failedLines = resolution.lines
+        .filter((l) => l.status === "no_capacity")
+        .map((l) => `SKU ${l.skuId} (qty ${l.quantity})`)
+        .join(", ");
+      throw createHttpError(400, `No available putaway location for: ${failedLines}`);
+    }
+
     const config = getTaskGenerationConfig();
-    const taskSpecs = buildTaskSpecList(normalizedEvent, zoneResolver, config);
+    const taskSpecs = buildPurchaseOrderPutawayTaskSpecs(normalizedEvent, resolution.lines, {
+      baseTimeSeconds: config.putawayBaseTimeSeconds,
+      timePerUnitSeconds: config.putawayTimePerUnitSeconds,
+      priority: config.putawayPriority
+    });
 
     const createdTasks = [];
     for (const taskSpec of taskSpecs) {

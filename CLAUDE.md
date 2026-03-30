@@ -94,7 +94,8 @@ Single `001_schema.sql` file contains the complete schema: all enums, tables (wa
 - **Realtime event flow**: Service → `publishRealtimeEvent()` → Redis channel → Socket.IO server → broadcast to room → frontend React state update.
 - **Task lifecycle**: `created → assigned → in_progress → completed/cancelled/failed`, with `paused` as a valid intermediate state from `in_progress`.
 - **Sales order lifecycle**: `pending_inventory → ready → released → completed/cancelled`. External systems send sales orders without pick locations — the WMS resolves pick locations from inventory. Orders with insufficient stock are held as `pending_inventory` with inventory alerts. When inventory is replenished (INBOUND/TRANSFER movements), pending orders are automatically re-evaluated.
-- **Inventory resolution strategy**: For each order line, the WMS finds the best pick location (active location in a pick zone with sufficient stock, preferring highest quantity to consolidate picks). If no single location can fulfill a line, the order is held and an `INVENTORY_ALERT` realtime event + `SALES_ORDER_SHORT` integration event are published.
+- **Pick location resolution**: For each sales order line, the WMS finds the best pick location (active location in a pick zone with sufficient stock, preferring highest quantity to consolidate picks). If no single location can fulfill a line, the order is held and an `INVENTORY_ALERT` realtime event + `SALES_ORDER_SHORT` integration event are published.
+- **Putaway location resolution**: Purchase orders include a `strategy` field (`RANDOM`, `CONSOLIDATION`, `EMPTY`) that controls how the WMS assigns destination locations. `CONSOLIDATION` prefers locations already holding the same SKU, `RANDOM` picks any location with existing inventory, `EMPTY` targets locations with no stock. All strategies fall back to any available location with sufficient capacity. Only locations in bulk/staging zones are considered.
 
 ## Environment Variables
 

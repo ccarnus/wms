@@ -114,23 +114,64 @@ test("buildSalesOrderPickTaskSpecs creates one task from resolved lines", () => 
   assert.equal(task.lines[2].fromLocationId, 12);
 });
 
-test("buildPurchaseOrderPutawayTaskSpecs groups by destination location zone", () => {
+test("normalizeTaskGenerationEvent validates strategy for purchase orders", () => {
+  assert.throws(
+    () => normalizeTaskGenerationEvent({
+      type: ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED,
+      purchaseOrderId: "PO-456",
+      lines: [{ skuId: 1, quantity: 6 }]
+    }),
+    (error) => error?.statusCode === 400 && /strategy/.test(error.message)
+  );
+
+  assert.throws(
+    () => normalizeTaskGenerationEvent({
+      type: ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED,
+      purchaseOrderId: "PO-456",
+      strategy: "INVALID",
+      lines: [{ skuId: 1, quantity: 6 }]
+    }),
+    (error) => error?.statusCode === 400 && /strategy/.test(error.message)
+  );
+});
+
+test("normalizeTaskGenerationEvent normalizes purchase order with strategy", () => {
   const normalized = normalizeTaskGenerationEvent({
     type: ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED,
     purchaseOrderId: "PO-456",
+    strategy: "consolidation",
     lines: [
-      { skuId: 1, quantity: 6, destinationLocationId: 201 },
-      { skuId: 2, quantity: 4, destinationLocationId: 202 }
+      { skuId: 1, quantity: 6 },
+      { skuId: 2, quantity: 4 }
     ]
   });
 
-  const zoneMap = new Map([
-    [201, "zone-putaway-a"],
-    [202, "zone-putaway-b"]
-  ]);
-  const zoneResolver = (locationId) => zoneMap.get(locationId);
+  assert.equal(normalized.type, ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED);
+  assert.equal(normalized.sourceDocumentId, "PO-PO-456");
+  assert.equal(normalized.strategy, "CONSOLIDATION");
+  assert.equal(normalized.lines.length, 2);
+  assert.equal(normalized.lines[0].skuId, 1);
+  assert.equal(normalized.lines[0].quantity, 6);
+  assert.equal(normalized.lines[0].destinationLocationId, undefined);
+});
 
-  const taskSpecs = buildPurchaseOrderPutawayTaskSpecs(normalized, zoneResolver, {
+test("buildPurchaseOrderPutawayTaskSpecs groups resolved lines by zone", () => {
+  const normalized = normalizeTaskGenerationEvent({
+    type: ORDER_EVENT_TYPES.PURCHASE_ORDER_RECEIVED,
+    purchaseOrderId: "PO-456",
+    strategy: "CONSOLIDATION",
+    lines: [
+      { skuId: 1, quantity: 6 },
+      { skuId: 2, quantity: 4 }
+    ]
+  });
+
+  const resolvedLines = [
+    { skuId: 1, quantity: 6, destinationLocationId: 201, zoneId: "zone-putaway-a" },
+    { skuId: 2, quantity: 4, destinationLocationId: 202, zoneId: "zone-putaway-b" }
+  ];
+
+  const taskSpecs = buildPurchaseOrderPutawayTaskSpecs(normalized, resolvedLines, {
     baseTimeSeconds: 40,
     timePerUnitSeconds: 2,
     priority: 55
@@ -140,5 +181,8 @@ test("buildPurchaseOrderPutawayTaskSpecs groups by destination location zone", (
   assert.equal(taskSpecs[0].type, "putaway");
   assert.equal(taskSpecs[0].priority, 55);
   assert.equal(taskSpecs[0].sourceDocumentId, "PO-PO-456");
-  assert.equal(taskSpecs[0].lines[0].toLocationId > 0, true);
+  assert.equal(taskSpecs[0].zoneId, "zone-putaway-a");
+  assert.equal(taskSpecs[0].lines[0].toLocationId, 201);
+  assert.equal(taskSpecs[1].zoneId, "zone-putaway-b");
+  assert.equal(taskSpecs[1].lines[0].toLocationId, 202);
 });
