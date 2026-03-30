@@ -22,7 +22,7 @@ docker compose build --no-cache backend && docker compose up -d backend
 ### Backend tests (Node.js built-in test runner + assert/strict)
 ```bash
 cd backend && npm test
-# Runs: test/taskGenerationLogic.test.js && test/laborMetricsAggregationService.test.js
+# Runs: test/pickTaskGeneration.test.js && test/putawayTaskGeneration.test.js && test/laborMetricsAggregationService.test.js
 ```
 
 ### Seed the default admin user

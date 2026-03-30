@@ -9,7 +9,7 @@
     "worker:tasks": "node src/workers/taskGenerationWorker.js",
     "worker:assignments": "node src/workers/taskAssignmentWorker.js",
     "worker:labor-metrics": "node src/workers/laborMetricsWorker.js",
-    "test": "node test/taskGenerationLogic.test.js && node test/laborMetricsAggregationService.test.js",
+    "test": "node test/pickTaskGeneration.test.js && node test/putawayTaskGeneration.test.js && node test/laborMetricsAggregationService.test.js",
     "seed:users": "node src/scripts/seedUsers.js",
     "seed:testdata": "node src/scripts/seedTestData.js",
     "worker:integrations": "node src/workers/integrationWorker.js"
