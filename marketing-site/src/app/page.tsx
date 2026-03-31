@@ -15,7 +15,7 @@ const STRUCTURED_DATA = {
       "@type": "Organization",
       name: "Greenlights",
       url: "https://greenlights.us",
-      logo: "https://greenlights.us/Greenlights.png",
+      logo: "https://greenlights.us/Greenlights_full_logo.png",
       description:
         "Modern warehouse management system with real-time task orchestration, intelligent operator assignment, and live inventory tracking.",
       contactPoint: {
@@ -32,14 +32,27 @@ const STRUCTURED_DATA = {
       url: "https://greenlights.us",
       description:
         "Cloud-based warehouse management system featuring real-time task orchestration, intelligent operator assignment, live inventory tracking, labor analytics, and webhook integrations.",
-      offers: {
-        "@type": "Offer",
-        price: "150",
-        priceCurrency: "USD",
-        priceValidUntil: "2027-12-31",
-        availability: "https://schema.org/InStock",
-        description: "Up to 20 users, all features included, billed monthly",
-      },
+      offers: [
+        {
+          "@type": "Offer",
+          name: "Standard",
+          price: "150",
+          priceCurrency: "USD",
+          priceValidUntil: "2027-12-31",
+          availability: "https://schema.org/InStock",
+          description: "Up to 20 users, all features included, billed monthly",
+        },
+        {
+          "@type": "Offer",
+          name: "Enterprise",
+          priceSpecification: {
+            "@type": "PriceSpecification",
+            description:
+              "Custom pricing — includes unlimited users, custom ERP/carrier integrations, EDI, SSO, 99.9% SLA, and dedicated implementation engineer",
+          },
+          availability: "https://schema.org/InStock",
+        },
+      ],
       featureList:
         "Real-time task orchestration, Intelligent operator assignment, Live inventory tracking, Labor performance analytics, Webhook integrations, WebSocket push updates, Role-based access control",
     },

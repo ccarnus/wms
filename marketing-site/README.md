@@ -43,9 +43,7 @@ aws s3 sync out/ s3://greenlights-marketing --delete
 ### 2. Invalidate cache after deploys
 
 ```bash
-aws cloudfront create-invalidation \
-  --distribution-id greenlights-marketing \
-  --paths "/*"
+aws cloudfront create-invalidation --distribution-id E2MYC3DESXWUAT --paths "/*"
 ```
 
 ## Project Structure

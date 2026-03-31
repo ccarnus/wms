@@ -17,16 +17,13 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-6 py-16">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           <div className="col-span-2 md:col-span-1">
-            <a href="/" className="flex items-center gap-2.5">
+            <a href="/">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/Logo.png"
+                src="/Greenlights_full_logo.png"
                 alt="Greenlights"
-                className="h-6 w-auto"
+                className="h-10 w-auto"
               />
-              <span className="text-lg font-bold tracking-tight text-gray-900">
-                Green<span className="text-brand-600">lights</span>
-              </span>
             </a>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-gray-500">
               Simple warehouse management for small businesses. Get organized,

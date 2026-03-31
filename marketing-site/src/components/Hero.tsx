@@ -9,9 +9,9 @@ export function Hero() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <div className="mb-8 flex justify-center">
             <img
-              src="/Greenlights.png"
+              src="/Greenlights_full_logo.png"
               alt="Greenlights"
-              className="h-16 w-auto sm:h-20"
+              className="h-28 w-auto sm:h-36"
             />
           </div>
 
@@ -24,15 +24,23 @@ export function Hero() {
               No commitment &mdash; cancel anytime
             </span>
           </div>
+        </div>
 
-          <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">
-            Warehouse operations,{" "}
-            <span className="bg-gradient-to-r from-brand-600 to-brand-500 bg-clip-text text-transparent">
-              orchestrated in real time
-            </span>
-          </h1>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <div className="mx-auto mt-8 max-w-3xl sm:mt-10">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-2xl shadow-gray-900/10">
+            <img
+              src="/images/hero-warehouse.jpg"
+              alt="Small business owner preparing packages at a fulfillment desk"
+              className="h-auto w-full object-cover"
+              width={1200}
+              height={600}
+            />
+          </div>
+        </div>
 
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600 sm:text-xl">
+        <div className="mx-auto mt-10 max-w-3xl text-center">
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-gray-600 sm:text-xl">
             Greenlights combines intelligent task assignment, live inventory
             tracking, and operator performance analytics into a single
             platform. Get onboarded and integrated in just one week.
@@ -51,19 +59,6 @@ export function Hero() {
             >
               See Pricing
             </a>
-          </div>
-        </div>
-
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <div className="mx-auto mt-16 max-w-3xl sm:mt-20">
-          <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-2xl shadow-gray-900/10">
-            <img
-              src="/images/hero-warehouse.jpg"
-              alt="Small business owner preparing packages at a fulfillment desk"
-              className="h-auto w-full object-cover"
-              width={800}
-              height={400}
-            />
           </div>
         </div>
       </div>
