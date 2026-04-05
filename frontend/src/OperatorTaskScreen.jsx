@@ -178,16 +178,31 @@ function UserSettingsPanel({ user, operatorId, operatorStatus, socketState, onLo
 
 /* ── Task Detail View ──────────────────────────────────────────────── */
 
+const BOX_TYPES = [
+  { value: "S", label: "Small (S)" },
+  { value: "M", label: "Medium (M)" },
+  { value: "L", label: "Large (L)" },
+  { value: "XL", label: "Extra Large (XL)" },
+  { value: "custom", label: "Custom" }
+];
+
 function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError, onBack, onTaskUpdate, expectedTaskQuantity }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isCompletePanelOpen, setIsCompletePanelOpen] = useState(false);
   const [confirmedQuantity, setConfirmedQuantity] = useState("");
 
+  // Pack-task specific fields
+  const [boxType, setBoxType] = useState("M");
+  const [weightGrams, setWeightGrams] = useState("");
+  const [weightError, setWeightError] = useState("");
+
   const statusBadgeClassName =
     statusBadgeClassNameMap[task?.status] || "border-slate-300 bg-slate-100 text-slate-700";
 
+  const isPackTask = task?.type === "pack";
+
   const submitTaskAction = useCallback(
-    async ({ actionName, endpoint, optimisticStatus, quantity }) => {
+    async ({ actionName, endpoint, optimisticStatus, extraPayload = {} }) => {
       if (!task?.id) return;
 
       setErrorMessage("");
@@ -202,11 +217,9 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
       try {
         const payload = {
           version: Number(previousTask.version),
-          changedByOperatorId: operatorId || null
+          changedByOperatorId: operatorId || null,
+          ...extraPayload
         };
-        if (quantity !== undefined) {
-          payload.quantity = quantity;
-        }
 
         const updatedTask = await fetchJson(`/api/tasks/${previousTask.id}/${endpoint}`, {
           jwtToken,
@@ -230,6 +243,8 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
         if (endpoint === "complete") {
           setIsCompletePanelOpen(false);
           setConfirmedQuantity("");
+          setWeightGrams("");
+          setWeightError("");
           onBack();
         }
       } catch (error) {
@@ -247,23 +262,43 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
     submitTaskAction({ actionName: "pause", endpoint: "pause", optimisticStatus: "paused" });
 
   const handleCompleteTask = async () => {
-    const numericConfirmedQuantity = Number(confirmedQuantity);
-    if (!Number.isInteger(numericConfirmedQuantity) || numericConfirmedQuantity <= 0) {
-      setErrorMessage("Confirmed quantity must be a positive integer");
-      return;
+    if (isPackTask) {
+      // Pack task: validate weight, send box metadata
+      setWeightError("");
+      const numericWeight = Number(weightGrams);
+      if (!weightGrams || !Number.isFinite(numericWeight) || numericWeight <= 0) {
+        setWeightError("Enter a valid weight greater than 0 g");
+        return;
+      }
+      await submitTaskAction({
+        actionName: "complete",
+        endpoint: "complete",
+        optimisticStatus: "completed",
+        extraPayload: {
+          boxType: boxType || null,
+          weightGrams: Math.round(numericWeight)
+        }
+      });
+    } else {
+      // Standard task: validate confirmed quantity
+      const numericConfirmedQuantity = Number(confirmedQuantity);
+      if (!Number.isInteger(numericConfirmedQuantity) || numericConfirmedQuantity <= 0) {
+        setErrorMessage("Confirmed quantity must be a positive integer");
+        return;
+      }
+      if (expectedTaskQuantity > 0 && numericConfirmedQuantity !== expectedTaskQuantity) {
+        const keepGoing = window.confirm(
+          `Expected ${expectedTaskQuantity} units but confirmed ${numericConfirmedQuantity}. Complete anyway?`
+        );
+        if (!keepGoing) return;
+      }
+      await submitTaskAction({
+        actionName: "complete",
+        endpoint: "complete",
+        optimisticStatus: "completed",
+        extraPayload: { quantity: numericConfirmedQuantity }
+      });
     }
-    if (expectedTaskQuantity > 0 && numericConfirmedQuantity !== expectedTaskQuantity) {
-      const keepGoing = window.confirm(
-        `Expected ${expectedTaskQuantity} units but confirmed ${numericConfirmedQuantity}. Complete anyway?`
-      );
-      if (!keepGoing) return;
-    }
-    await submitTaskAction({
-      actionName: "complete",
-      endpoint: "complete",
-      optimisticStatus: "completed",
-      quantity: numericConfirmedQuantity
-    });
   };
 
   const isStartAllowed = task && ["assigned", "paused"].includes(task.status);
@@ -333,24 +368,69 @@ function TaskDetailView({ task, actionLoading, operatorId, jwtToken, onAuthError
         </div>
 
         {isCompletePanelOpen && (
-          <div className="rounded-xl border border-black/10 bg-canvas p-3">
-            <p className="text-sm font-semibold">Confirm processed quantity</p>
-            <p className="mt-1 text-xs text-black/60">Expected total units: {expectedTaskQuantity || "N/A"}</p>
-            <input
-              type="number"
-              min="1"
-              className="mt-2 w-full rounded-lg border border-black/15 px-3 py-2 text-sm"
-              value={confirmedQuantity}
-              onChange={(event) => setConfirmedQuantity(event.target.value)}
-              placeholder="Enter confirmed quantity"
-            />
-            <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-black/10 bg-canvas p-3 space-y-3">
+            {isPackTask ? (
+              <>
+                <p className="text-sm font-semibold">Pack details</p>
+                <p className="text-xs text-black/60">{expectedTaskQuantity} unit{expectedTaskQuantity !== 1 ? "s" : ""} to pack from this order</p>
+
+                <div>
+                  <label className="text-xs font-semibold text-black/60">Box size</label>
+                  <div className="mt-1 grid grid-cols-3 gap-1.5">
+                    {BOX_TYPES.map((bt) => (
+                      <button
+                        key={bt.value}
+                        type="button"
+                        className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                          boxType === bt.value
+                            ? "border-accent bg-accent/10 text-accent"
+                            : "border-black/15 bg-white text-black/70"
+                        }`}
+                        onClick={() => setBoxType(bt.value)}
+                      >
+                        {bt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-black/60">Parcel weight (grams)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${weightError ? "border-signal" : "border-black/15"}`}
+                    value={weightGrams}
+                    onChange={(e) => { setWeightGrams(e.target.value); setWeightError(""); }}
+                    placeholder="e.g. 850"
+                  />
+                  {weightError && <p className="mt-1 text-xs text-signal">{weightError}</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold">Confirm processed quantity</p>
+                <p className="text-xs text-black/60">Expected total units: {expectedTaskQuantity || "N/A"}</p>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm"
+                  value={confirmedQuantity}
+                  onChange={(event) => setConfirmedQuantity(event.target.value)}
+                  placeholder="Enter confirmed quantity"
+                />
+              </>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 className="rounded-lg border border-black/15 bg-white px-3 py-2 text-sm font-semibold"
                 onClick={() => {
                   setIsCompletePanelOpen(false);
                   setConfirmedQuantity("");
+                  setWeightGrams("");
+                  setWeightError("");
                 }}
                 disabled={actionLoading === "complete"}
               >

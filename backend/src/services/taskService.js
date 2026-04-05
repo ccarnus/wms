@@ -3,6 +3,7 @@ const { Task, TASK_STATUSES } = require("../models/taskModel");
 const { publishRealtimeEvent } = require("../realtime/eventBus");
 const { REALTIME_EVENT_TYPES } = require("../realtime/eventTypes");
 const { enqueueIntegrationEvent } = require("../queue/integrationQueue");
+const { onPickTaskCompleted } = require("./shipmentService");
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TASK_STATUS_SET = new Set(TASK_STATUSES);
@@ -329,6 +330,15 @@ const updateTaskStatus = async (taskId, newStatus, options = {}) => {
 
     await client.query("COMMIT");
     inTransaction = false;
+
+    // When a pick task completes, asynchronously create the downstream pack task + shipment
+    if (updatedTask.type === "pick" && newStatus === "completed") {
+      setImmediate(() => {
+        onPickTaskCompleted(updatedTask.id).catch((err) => {
+          console.error("[shipment] Failed to create pack task after pick completion:", err);
+        });
+      });
+    }
 
     const taskUpdatedPayload = {
       taskId: updatedTask.id,

@@ -398,3 +398,40 @@ CREATE TRIGGER trg_sales_orders_set_updated_at
 DROP TRIGGER IF EXISTS trg_integrations_set_updated_at ON integrations;
 CREATE TRIGGER trg_integrations_set_updated_at
   BEFORE UPDATE ON integrations FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
+
+-- ── Outbound (Pack & Ship) ───────────────────────────────────────────
+
+ALTER TYPE task_type ADD VALUE IF NOT EXISTS 'pack';
+ALTER TYPE zone_type ADD VALUE IF NOT EXISTS 'packing';
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'shipment_status') THEN
+  CREATE TYPE shipment_status AS ENUM ('pending', 'labeled', 'dispatched', 'delivered');
+END IF; END$$;
+
+CREATE TABLE IF NOT EXISTS shipments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sales_order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  pack_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+  status shipment_status NOT NULL DEFAULT 'pending',
+  carrier TEXT,
+  tracking_number TEXT,
+  label_url TEXT,
+  box_type TEXT,
+  weight_grams INT CHECK (weight_grams IS NULL OR weight_grams > 0),
+  length_cm INT CHECK (length_cm IS NULL OR length_cm > 0),
+  width_cm INT CHECK (width_cm IS NULL OR width_cm > 0),
+  height_cm INT CHECK (height_cm IS NULL OR height_cm > 0),
+  dispatched_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (sales_order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments (status);
+CREATE INDEX IF NOT EXISTS idx_shipments_sales_order_id ON shipments (sales_order_id);
+CREATE INDEX IF NOT EXISTS idx_shipments_pack_task_id ON shipments (pack_task_id) WHERE pack_task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_shipments_created_at ON shipments (created_at DESC);
+
+DROP TRIGGER IF EXISTS trg_shipments_set_updated_at ON shipments;
+CREATE TRIGGER trg_shipments_set_updated_at
+  BEFORE UPDATE ON shipments FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();

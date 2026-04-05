@@ -1,5 +1,6 @@
 const express = require("express");
 const { getTaskById, listTasksPaginated, manualAssignTask, updateTaskStatus } = require("../services/taskService");
+const { completePackTaskShipment } = require("../services/shipmentService");
 
 const router = express.Router();
 
@@ -90,7 +91,37 @@ router.post("/:taskId/assign", async (req, res, next) => {
 });
 
 router.post("/:taskId/start", createStatusActionHandler("in_progress"));
-router.post("/:taskId/complete", createStatusActionHandler("completed"));
+
+router.post("/:taskId/complete", async (req, res, next) => {
+  try {
+    const payload = parseStatusActionPayload(req.body);
+    const updatedTask = await updateTaskStatus(req.params.taskId, "completed", {
+      expectedVersion: payload.version,
+      changedByOperatorId: payload.changedByOperatorId
+    });
+
+    // For pack tasks, persist box/weight details to the linked shipment
+    if (updatedTask.type === "pack") {
+      const boxType = typeof req.body.boxType === "string" ? req.body.boxType.trim() || null : null;
+      const weightGrams = req.body.weightGrams != null ? Number(req.body.weightGrams) : null;
+      const lengthCm = req.body.lengthCm != null ? Number(req.body.lengthCm) : null;
+      const widthCm = req.body.widthCm != null ? Number(req.body.widthCm) : null;
+      const heightCm = req.body.heightCm != null ? Number(req.body.heightCm) : null;
+
+      try {
+        await completePackTaskShipment(updatedTask.id, { boxType, weightGrams, lengthCm, widthCm, heightCm });
+      } catch (err) {
+        // Task is already committed — log but don't fail the response
+        console.error("[pack] Failed to update shipment after pack task completion:", err);
+      }
+    }
+
+    res.status(200).json(updatedTask);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/:taskId/pause", createStatusActionHandler("paused"));
 router.post("/:taskId/cancel", createStatusActionHandler("cancelled"));
 

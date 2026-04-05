@@ -18,6 +18,7 @@ const warehousesRoutes = require("./routes/warehouses");
 const zonesRoutes = require("./routes/zones");
 const locationsRoutes = require("./routes/locations");
 const skusRoutes = require("./routes/skus");
+const shipmentsRoutes = require("./routes/shipments");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -68,7 +69,11 @@ app.get("/", (_req, res) => {
       "/api/zones",
       "/api/zones/:id",
       "/api/locations",
-      "/api/locations/:id"
+      "/api/locations/:id",
+      "/api/shipments",
+      "/api/shipments/manifest",
+      "/api/shipments/dispatch",
+      "/api/shipments/:shipmentId/label"
     ]
   });
 });
@@ -91,6 +96,7 @@ app.use("/api/warehouses", warehousesRoutes);
 app.use("/api/zones", zonesRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/skus", skusRoutes);
+app.use("/api/shipments", shipmentsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

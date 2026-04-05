@@ -3,6 +3,8 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { getIntegrationByConnectorType, logIntegrationEvent } = require("../services/integrationService");
 const { getConnector } = require("../integrations");
+const { applyShipmentLabel } = require("../services/shipmentService");
+const { INTEGRATION_EVENTS } = require("../integrations/integrationEvents");
 
 const router = express.Router();
 
@@ -193,6 +195,30 @@ router.post("/:connectorType", async (req, res, next) => {
 
     const connector = getConnector(integration.connectorType);
     const { eventType, data } = connector.handleInbound(req.body);
+
+    // Dispatch inbound events that require WMS side-effects
+    if (eventType === INTEGRATION_EVENTS.INBOUND_SHIPMENT_LABELED) {
+      try {
+        const shipmentId = data?.shipmentId;
+        if (!shipmentId) throw new Error("shipmentId is required in inbound.shipment.labeled payload");
+        await applyShipmentLabel(shipmentId, {
+          carrier: data.carrier,
+          trackingNumber: data.trackingNumber,
+          labelUrl: data.labelUrl
+        });
+      } catch (err) {
+        await logIntegrationEvent({
+          integrationId: integration.id,
+          direction: "inbound",
+          eventType,
+          payload: data,
+          status: "failed",
+          errorMessage: err.message,
+          attempts: 1
+        });
+        return res.status(422).json({ error: err.message });
+      }
+    }
 
     await logIntegrationEvent({
       integrationId: integration.id,

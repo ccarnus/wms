@@ -1,4 +1,4 @@
-const TASK_TYPES = Object.freeze(["pick", "putaway", "replenish", "count"]);
+const TASK_TYPES = Object.freeze(["pick", "putaway", "replenish", "count", "pack"]);
 const TASK_STATUSES = Object.freeze([
   "created",
   "assigned",

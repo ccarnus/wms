@@ -8,6 +8,7 @@ import OperatorTaskScreen from "./OperatorTaskScreen";
 import UserManagementScreen from "./UserManagementScreen";
 import IntegrationsScreen from "./IntegrationsScreen";
 import ConfigurationScreen from "./ConfigurationScreen";
+import ShipmentDashboard from "./ShipmentDashboard";
 
 /* ── Inline SVG icons (24x24, stroke-based) ─────────────────────────── */
 
@@ -74,6 +75,15 @@ function IconIntegrations({ className }) {
   );
 }
 
+function IconShipments({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 8h14M5 8a2 2 0 1 0-4 0 2 2 0 0 0 4 0zm14 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}
+
 function IconConfiguration({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -131,6 +141,12 @@ const VIEWS = [
     icon: IconInventory
   },
   {
+    id: "shipments",
+    label: "Shipments",
+    subtitle: "Pack & dispatch management",
+    icon: IconShipments
+  },
+  {
     id: "users",
     label: "Users",
     subtitle: "Manage user accounts",
@@ -151,9 +167,9 @@ const VIEWS = [
 ];
 
 const VIEWS_BY_ROLE = {
-  admin: ["dashboard", "manager", "inventory", "users", "integrations", "configuration"],
-  warehouse_manager: ["dashboard", "manager", "inventory", "users", "configuration"],
-  supervisor: ["dashboard", "manager", "inventory", "users"],
+  admin: ["dashboard", "manager", "inventory", "shipments", "users", "integrations", "configuration"],
+  warehouse_manager: ["dashboard", "manager", "inventory", "shipments", "users", "configuration"],
+  supervisor: ["dashboard", "manager", "inventory", "shipments", "users"],
   operator: ["operator"],
   viewer: ["dashboard", "manager", "inventory"]
 };
@@ -308,6 +324,9 @@ function App() {
     }
     if (view === "configuration") {
       return <ConfigurationScreen jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
+    }
+    if (view === "shipments") {
+      return <ShipmentDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
     }
     return <ManagerLaborDashboard jwtToken={auth.token} user={auth.user} onAuthError={handleAuthError} />;
   })();
