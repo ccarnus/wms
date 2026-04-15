@@ -132,18 +132,6 @@ const generateTasksForOrderEvent = async (eventPayload) => {
       };
     }
 
-    // Validate all SKU IDs exist before writing anything
-    const requestedSkuIds = [...new Set(normalizedEvent.lines.map((l) => l.skuId))];
-    const skuCheckResult = await client.query(
-      `SELECT id FROM skus WHERE id = ANY($1::int[])`,
-      [requestedSkuIds]
-    );
-    const foundSkuIds = new Set(skuCheckResult.rows.map((r) => r.id));
-    const unknownSkuIds = requestedSkuIds.filter((id) => !foundSkuIds.has(id));
-    if (unknownSkuIds.length > 0) {
-      throw createHttpError(400, `Unknown SKU ID(s): ${unknownSkuIds.join(", ")}`);
-    }
-
     // Persist purchase order record (idempotent on source_document_id)
     const poInsertResult = await client.query(
       `INSERT INTO purchase_orders (external_id, source_document_id, status, strategy, received_at)
