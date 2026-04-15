@@ -19,6 +19,7 @@ const zonesRoutes = require("./routes/zones");
 const locationsRoutes = require("./routes/locations");
 const skusRoutes = require("./routes/skus");
 const shipmentsRoutes = require("./routes/shipments");
+const purchaseOrdersRoutes = require("./routes/purchaseOrders");
 const requireAuth = require("./middlewares/requireAuth");
 const notFoundHandler = require("./middlewares/notFoundHandler");
 const errorHandler = require("./middlewares/errorHandler");
@@ -63,6 +64,8 @@ app.get("/", (_req, res) => {
       "/api/sales-orders/alerts",
       "/api/sales-orders/reevaluate",
       "/api/sales-orders/:salesOrderId",
+      "/api/purchase-orders",
+      "/api/purchase-orders/:purchaseOrderId",
       "/api/integrations",
       "/api/integrations/connector-types",
       "/api/webhook/:connectorType",
@@ -97,6 +100,7 @@ app.use("/api/zones", zonesRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/skus", skusRoutes);
 app.use("/api/shipments", shipmentsRoutes);
+app.use("/api/purchase-orders", purchaseOrdersRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

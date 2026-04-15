@@ -435,3 +435,47 @@ CREATE INDEX IF NOT EXISTS idx_shipments_created_at ON shipments (created_at DES
 DROP TRIGGER IF EXISTS trg_shipments_set_updated_at ON shipments;
 CREATE TRIGGER trg_shipments_set_updated_at
   BEFORE UPDATE ON shipments FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
+
+-- ── Purchase Orders ──────────────────────────────────────────────────
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'purchase_order_status') THEN
+  CREATE TYPE purchase_order_status AS ENUM ('received', 'pending_capacity', 'in_progress', 'completed', 'cancelled');
+END IF; END$$;
+
+ALTER TYPE purchase_order_status ADD VALUE IF NOT EXISTS 'pending_capacity';
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'purchase_order_line_status') THEN
+  CREATE TYPE purchase_order_line_status AS ENUM ('pending', 'putaway', 'cancelled');
+END IF; END$$;
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT NOT NULL,
+  source_document_id TEXT NOT NULL UNIQUE,
+  status purchase_order_status NOT NULL DEFAULT 'received',
+  strategy TEXT NOT NULL CHECK (strategy IN ('RANDOM', 'CONSOLIDATION', 'EMPTY')),
+  received_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purchase_order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  sku_id INT NOT NULL REFERENCES skus(id) ON DELETE RESTRICT,
+  quantity INT NOT NULL CHECK (quantity > 0),
+  destination_location_id INT REFERENCES locations(id) ON DELETE RESTRICT,
+  status purchase_order_line_status NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_pending_capacity ON purchase_orders(created_at ASC)
+  WHERE status = 'pending_capacity';
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_source_document_id ON purchase_orders(source_document_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_purchase_order_id ON purchase_order_lines(purchase_order_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_sku_id ON purchase_order_lines(sku_id);
+
+DROP TRIGGER IF EXISTS trg_purchase_orders_set_updated_at ON purchase_orders;
+CREATE TRIGGER trg_purchase_orders_set_updated_at
+  BEFORE UPDATE ON purchase_orders FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();

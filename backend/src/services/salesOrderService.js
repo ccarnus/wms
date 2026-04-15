@@ -530,7 +530,66 @@ const listActiveAlerts = async ({ page = 1, limit = 50 } = {}) => {
   };
 };
 
+/**
+ * Cancel a sales order. Only allowed when status is 'pending_inventory' or 'ready'.
+ * Resolves any active inventory alerts for the order.
+ */
+const cancelSalesOrder = async (salesOrderId) => {
+  if (!UUID_REGEX.test(salesOrderId)) {
+    throw createHttpError(400, "salesOrderId must be a valid UUID");
+  }
+
+  const existing = await query(
+    "SELECT id, status FROM sales_orders WHERE id = $1",
+    [salesOrderId]
+  );
+
+  if (existing.rowCount === 0) {
+    throw createHttpError(404, "Sales order not found");
+  }
+
+  const { status } = existing.rows[0];
+  const cancellableStatuses = ["pending_inventory", "ready"];
+  if (!cancellableStatuses.includes(status)) {
+    throw createHttpError(
+      409,
+      `Cannot cancel a sales order with status '${status}'. Only '${cancellableStatuses.join("' or '")}' orders can be cancelled.`
+    );
+  }
+
+  // Resolve any active alerts
+  await query(
+    `UPDATE inventory_alerts
+     SET status = 'resolved'::inventory_alert_status, resolved_at = NOW()
+     WHERE sales_order_id = $1 AND status = 'active'`,
+    [salesOrderId]
+  );
+
+  const { rows } = await query(
+    `UPDATE sales_orders
+     SET status = 'cancelled'::sales_order_status
+     WHERE id = $1
+     RETURNING id, status`,
+    [salesOrderId]
+  );
+
+  try {
+    await publishRealtimeEvent({
+      type: REALTIME_EVENT_TYPES.SALES_ORDER_UPDATED,
+      payload: {
+        salesOrderId,
+        status: "cancelled"
+      }
+    });
+  } catch (error) {
+    console.error("[salesOrder] Failed to publish cancel event", error);
+  }
+
+  return rows[0];
+};
+
 module.exports = {
+  cancelSalesOrder,
   createSalesOrder,
   getSalesOrderById,
   listActiveAlerts,

@@ -132,18 +132,81 @@ const generateTasksForOrderEvent = async (eventPayload) => {
       };
     }
 
+    // Validate all SKU IDs exist before writing anything
+    const requestedSkuIds = [...new Set(normalizedEvent.lines.map((l) => l.skuId))];
+    const skuCheckResult = await client.query(
+      `SELECT id FROM skus WHERE id = ANY($1::int[])`,
+      [requestedSkuIds]
+    );
+    const foundSkuIds = new Set(skuCheckResult.rows.map((r) => r.id));
+    const unknownSkuIds = requestedSkuIds.filter((id) => !foundSkuIds.has(id));
+    if (unknownSkuIds.length > 0) {
+      throw createHttpError(400, `Unknown SKU ID(s): ${unknownSkuIds.join(", ")}`);
+    }
+
+    // Persist purchase order record (idempotent on source_document_id)
+    const poInsertResult = await client.query(
+      `INSERT INTO purchase_orders (external_id, source_document_id, status, strategy, received_at)
+       VALUES ($1, $2, 'received'::purchase_order_status, $3, $4)
+       ON CONFLICT (source_document_id) DO UPDATE SET updated_at = NOW()
+       RETURNING id`,
+      [
+        normalizedEvent.purchaseOrderId,
+        normalizedEvent.sourceDocumentId,
+        normalizedEvent.strategy,
+        normalizedEvent.receivedAt || null
+      ]
+    );
+    const purchaseOrderId = poInsertResult.rows[0].id;
+
+    // Insert purchase order lines
+    for (const line of normalizedEvent.lines) {
+      await client.query(
+        `INSERT INTO purchase_order_lines (purchase_order_id, sku_id, quantity)
+         VALUES ($1, $2, $3)`,
+        [purchaseOrderId, line.skuId, line.quantity]
+      );
+    }
+
     // Resolve putaway destination locations using WMS strategy
     const resolution = await resolvePutawayLocations(
       client, normalizedEvent.lines, normalizedEvent.strategy
     );
 
     if (!resolution.allResolved) {
-      const failedLines = resolution.lines
-        .filter((l) => l.status === "no_capacity")
-        .map((l) => `SKU ${l.skuId} (qty ${l.quantity})`)
-        .join(", ");
-      throw createHttpError(400, `No available putaway location for: ${failedLines}`);
+      // No putaway locations available — hold the PO until capacity is freed.
+      // The order is persisted as pending_capacity; reevaluatePendingPurchaseOrders()
+      // will retry automatically after any OUTBOUND or TRANSFER movement.
+      await client.query(
+        `UPDATE purchase_orders SET status = 'pending_capacity'::purchase_order_status WHERE id = $1`,
+        [purchaseOrderId]
+      );
+      await client.query("COMMIT");
+      inTransaction = false;
+      return {
+        eventKey: normalizedEvent.eventKey,
+        skipped: false,
+        purchaseOrderId,
+        pendingCapacity: true,
+        tasks: []
+      };
     }
+
+    // Update lines with resolved destination locations
+    for (const resolvedLine of resolution.lines) {
+      await client.query(
+        `UPDATE purchase_order_lines
+         SET destination_location_id = $2, status = 'putaway'::purchase_order_line_status
+         WHERE purchase_order_id = $1 AND sku_id = $3`,
+        [purchaseOrderId, resolvedLine.destinationLocationId, resolvedLine.skuId]
+      );
+    }
+
+    // Mark purchase order as in_progress
+    await client.query(
+      `UPDATE purchase_orders SET status = 'in_progress'::purchase_order_status WHERE id = $1`,
+      [purchaseOrderId]
+    );
 
     const config = getTaskGenerationConfig();
     const taskSpecs = buildPurchaseOrderPutawayTaskSpecs(normalizedEvent, resolution.lines, {
@@ -163,6 +226,7 @@ const generateTasksForOrderEvent = async (eventPayload) => {
     return {
       eventKey: normalizedEvent.eventKey,
       skipped: false,
+      purchaseOrderId,
       tasks: createdTasks
     };
   } catch (error) {
@@ -175,6 +239,112 @@ const generateTasksForOrderEvent = async (eventPayload) => {
   }
 };
 
+/**
+ * Re-evaluate all purchase orders held as pending_capacity.
+ * Called automatically after any OUTBOUND or TRANSFER movement frees up location space.
+ *
+ * Returns { evaluated, released, stillPending }.
+ */
+const reevaluatePendingPurchaseOrders = async () => {
+  const { query } = require("../db");
+
+  const pendingOrders = await query(
+    `SELECT id, source_document_id, strategy
+     FROM purchase_orders
+     WHERE status = 'pending_capacity'::purchase_order_status
+     ORDER BY created_at ASC`
+  );
+
+  const stats = { evaluated: 0, released: 0, stillPending: 0 };
+
+  for (const order of pendingOrders.rows) {
+    stats.evaluated += 1;
+    const client = await pool.connect();
+    let inTransaction = false;
+
+    try {
+      await client.query("BEGIN");
+      inTransaction = true;
+
+      // Skip if another process already picked it up
+      const lockResult = await client.query(
+        `SELECT id FROM purchase_orders
+         WHERE id = $1 AND status = 'pending_capacity' FOR UPDATE SKIP LOCKED`,
+        [order.id]
+      );
+      if (lockResult.rowCount === 0) {
+        await client.query("COMMIT");
+        continue;
+      }
+
+      const { rows: lines } = await client.query(
+        `SELECT sku_id AS "skuId", quantity
+         FROM purchase_order_lines
+         WHERE purchase_order_id = $1 AND status = 'pending'::purchase_order_line_status`,
+        [order.id]
+      );
+
+      if (lines.length === 0) {
+        await client.query("COMMIT");
+        continue;
+      }
+
+      const resolution = await resolvePutawayLocations(client, lines, order.strategy);
+
+      if (resolution.allResolved) {
+        for (const resolvedLine of resolution.lines) {
+          await client.query(
+            `UPDATE purchase_order_lines
+             SET destination_location_id = $2, status = 'putaway'::purchase_order_line_status
+             WHERE purchase_order_id = $1
+               AND sku_id = $3
+               AND status = 'pending'::purchase_order_line_status`,
+            [order.id, resolvedLine.destinationLocationId, resolvedLine.skuId]
+          );
+        }
+
+        const config = getTaskGenerationConfig();
+        const taskSpecs = buildPurchaseOrderPutawayTaskSpecs(
+          { sourceDocumentId: order.source_document_id },
+          resolution.lines,
+          {
+            baseTimeSeconds: config.putawayBaseTimeSeconds,
+            timePerUnitSeconds: config.putawayTimePerUnitSeconds,
+            priority: config.putawayPriority
+          }
+        );
+
+        for (const taskSpec of taskSpecs) {
+          await createTaskWithLines(client, taskSpec);
+        }
+
+        await client.query(
+          `UPDATE purchase_orders SET status = 'in_progress'::purchase_order_status WHERE id = $1`,
+          [order.id]
+        );
+
+        stats.released += 1;
+        await client.query("COMMIT");
+        inTransaction = false;
+      } else {
+        stats.stillPending += 1;
+        await client.query("COMMIT");
+        inTransaction = false;
+      }
+    } catch (error) {
+      if (inTransaction) {
+        await client.query("ROLLBACK");
+      }
+      console.error(`[purchaseOrder] Failed to re-evaluate PO ${order.id}`, error);
+    } finally {
+      client.release();
+    }
+  }
+
+  return stats;
+};
+
 module.exports = {
-  generateTasksForOrderEvent
+  generateTasksForOrderEvent,
+  reevaluatePendingPurchaseOrders
 };

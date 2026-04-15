@@ -121,13 +121,22 @@ All endpoints except `/api/health`, `/api/auth/*`, and `/api/webhook/*` require 
 - `GET /api/labor/zone-workload?warehouse_id=&page=1&limit=50`
 
 ### Sales Orders
-- `GET /api/sales-orders`
-- `GET /api/sales-orders/alerts`
+- `POST /api/sales-orders` — create a sales order directly; resolves pick locations from inventory
+- `GET /api/sales-orders?status=&page=1&limit=50`
+- `GET /api/sales-orders/alerts?page=1&limit=50`
 - `GET /api/sales-orders/:salesOrderId`
-- `POST /api/sales-orders/reevaluate`
+- `POST /api/sales-orders/reevaluate` — re-evaluate all `pending_inventory` orders after a stock change
+- `DELETE /api/sales-orders/:salesOrderId` — cancel (`pending_inventory` or `ready` only)
+
+### Purchase Orders
+- `GET /api/purchase-orders?status=&page=1&limit=50`
+- `GET /api/purchase-orders/:purchaseOrderId`
+- `DELETE /api/purchase-orders/:purchaseOrderId` — cancel (`received` status only)
+
+> Purchase orders are **created** via `POST /api/order-events` (see Order Events below), which resolves putaway locations and generates putaway tasks atomically.
 
 ### Order Events
-- `POST /api/order-events`
+- `POST /api/order-events` — enqueue a sales order or purchase order event for async task generation
 
 ### Users
 - `GET /api/users`
@@ -177,15 +186,14 @@ Example task status update payload:
 }
 ```
 
-## Order Event Payloads
+## Order Payloads
 
-### Sales order (pick task generation)
+### Create a sales order — `POST /api/sales-orders`
 
-The WMS resolves pick locations from inventory — do not pass `pickLocationId`.
+The WMS resolves pick locations from inventory — do not pass `pickLocationId`. Priority is derived automatically from `shipDate`.
 
 ```json
 {
-  "type": "sales_order_ready_for_pick",
   "salesOrderId": "SO-10045",
   "shipDate": "2026-03-01T08:00:00.000Z",
   "lines": [
@@ -195,7 +203,13 @@ The WMS resolves pick locations from inventory — do not pass `pickLocationId`.
 }
 ```
 
-### Purchase order (putaway task generation)
+If all lines can be fulfilled from stock, the order is immediately released and a pick task is created. If any line is short, the order is held as `pending_inventory` and an `INVENTORY_ALERT` realtime event is published. Call `POST /api/sales-orders/reevaluate` after restocking to retry pending orders.
+
+The same payload can also be sent to `POST /api/order-events` with `"type": "sales_order_ready_for_pick"` to go through the async queue instead.
+
+### Create a purchase order — `POST /api/order-events`
+
+Purchase orders are always created via the event queue (async). The event resolves putaway locations, generates putaway tasks, and persists the order record in one transaction.
 
 ```json
 {
@@ -212,11 +226,21 @@ The WMS resolves pick locations from inventory — do not pass `pickLocationId`.
 
 Putaway strategies: `RANDOM` (any location with stock), `CONSOLIDATION` (same SKU preferred), `EMPTY` (empty locations preferred). All strategies fall back to any available location with sufficient capacity.
 
+### Purchase order statuses
+
+| Status | Meaning |
+|---|---|
+| `received` | Event accepted, not yet processed by the worker |
+| `in_progress` | Putaway tasks created, operators working |
+| `completed` | All putaway tasks completed |
+| `cancelled` | Cancelled before processing (only from `received`) |
+
 ## Notes
 
 - Database schema is loaded from `database/init/001_schema.sql` on first DB boot.
 - Order events are enqueued in Redis and processed asynchronously by `task-worker`. Events are deduplicated by `event_key`.
-- Orders with insufficient stock are held as `pending_inventory` with `INVENTORY_ALERT` events. When inventory is replenished, pending orders are automatically re-evaluated.
+- Sales orders are persisted in the `sales_orders` / `sales_order_lines` tables and queryable via `GET /api/sales-orders`. Orders with insufficient stock are held as `pending_inventory` with `INVENTORY_ALERT` events. When inventory is replenished, pending orders are automatically re-evaluated.
+- Purchase orders are persisted in the `purchase_orders` / `purchase_order_lines` tables when processed by `task-worker` and queryable via `GET /api/purchase-orders`. Lines include the resolved `destinationLocationId` after putaway resolution.
 - The left sidebar switches between views (`Dashboard`, `Labor`, `Inventory`, `Configuration`, `Users`, `Integrations`). Operators bypass the sidebar entirely and get a full-screen task interface.
 - The operator view is exclusive to the `operator` role (mobile-first, sidebar-less, socket-only refresh).
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000ms`) using priority, zone matching, and lowest workload first.

@@ -2,6 +2,7 @@ const express = require("express");
 const { pool, query } = require("../db");
 const { publishRealtimeEvent } = require("../realtime/eventBus");
 const { reevaluatePendingOrders } = require("../services/salesOrderService");
+const { reevaluatePendingPurchaseOrders } = require("../services/taskGenerationService");
 
 const router = express.Router();
 
@@ -197,7 +198,15 @@ router.post("/movements", async (req, res, next) => {
     // When stock arrives (INBOUND/TRANSFER), re-evaluate pending sales orders
     if (movementType === "INBOUND" || movementType === "TRANSFER") {
       reevaluatePendingOrders().catch((err) => {
-        console.error("[wms] Failed to re-evaluate pending orders after movement", err);
+        console.error("[wms] Failed to re-evaluate pending sales orders after movement", err);
+      });
+    }
+
+    // When stock leaves (OUTBOUND/TRANSFER), locations free up capacity —
+    // re-evaluate purchase orders that were held for lack of putaway space
+    if (movementType === "OUTBOUND" || movementType === "TRANSFER") {
+      reevaluatePendingPurchaseOrders().catch((err) => {
+        console.error("[wms] Failed to re-evaluate pending purchase orders after movement", err);
       });
     }
 
