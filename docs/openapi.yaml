@@ -1,0 +1,2695 @@
+openapi: 3.1.0
+info:
+  title: GreenLights WMS API
+  version: 1.0.0
+  description: |
+    Warehouse Management System API for GreenLights.
+
+    **Authentication**: All endpoints except `/api/health`, `/api/auth/login`,
+    `/api/webhook/*`, and `/api/webhook/oauth/token` require a JWT Bearer token
+    obtained from `POST /api/auth/login`.
+
+servers:
+  - url: https://test.greenlights.us/api
+    description: Same-origin (default)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Operators
+  - name: Tasks
+  - name: Labor
+  - name: Sales Orders
+  - name: Purchase Orders
+  - name: Shipments
+  - name: Order Events
+  - name: WMS
+  - name: Warehouses
+  - name: Zones
+  - name: Locations
+  - name: SKUs
+  - name: Users
+  - name: Integrations
+  - name: Webhooks
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Paths
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: wms-backend
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  example: admin123
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT Bearer token (8h expiry)
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change own password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                  format: password
+                newPassword:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Operators ───────────────────────────────────────────────────────────────
+  /operators:
+    get:
+      tags: [Operators]
+      summary: List operators
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OperatorStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated operator list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Operator"
+
+  /operators/{operatorId}:
+    get:
+      tags: [Operators]
+      summary: Get operator by ID
+      parameters:
+        - $ref: "#/components/parameters/operatorId"
+      responses:
+        "200":
+          description: Operator object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operator"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /operators/{operatorId}/status:
+    patch:
+      tags: [Operators]
+      summary: Update operator status
+      parameters:
+        - $ref: "#/components/parameters/operatorId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: "#/components/schemas/OperatorStatus"
+      responses:
+        "200":
+          description: Updated operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operator"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Tasks ───────────────────────────────────────────────────────────────────
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: operatorId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: zoneId
+          in: query
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated task list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Task"
+
+  /tasks/{taskId}:
+    get:
+      tags: [Tasks]
+      summary: Get task by ID
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      responses:
+        "200":
+          description: Task object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{taskId}/assign:
+    post:
+      tags: [Tasks]
+      summary: Manually assign task to an operator
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operatorId]
+              properties:
+                operatorId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Task assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{taskId}/start:
+    post:
+      tags: [Tasks]
+      summary: Start a task (assigned → in_progress)
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskTransitionBody"
+      responses:
+        "200":
+          description: Task started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{taskId}/complete:
+    post:
+      tags: [Tasks]
+      summary: Complete a task (in_progress → completed)
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TaskTransitionBody"
+                - type: object
+                  properties:
+                    boxType:
+                      type: string
+                    weightGrams:
+                      type: number
+                    lengthCm:
+                      type: number
+                    widthCm:
+                      type: number
+                    heightCm:
+                      type: number
+      responses:
+        "200":
+          description: Task completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{taskId}/pause:
+    post:
+      tags: [Tasks]
+      summary: Pause a task (in_progress → paused)
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskTransitionBody"
+      responses:
+        "200":
+          description: Task paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{taskId}/cancel:
+    post:
+      tags: [Tasks]
+      summary: Cancel a task
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskTransitionBody"
+      responses:
+        "200":
+          description: Task cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{taskId}/status:
+    patch:
+      tags: [Tasks]
+      summary: Generic status transition
+      parameters:
+        - $ref: "#/components/parameters/taskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TaskTransitionBody"
+                - type: object
+                  required: [status]
+                  properties:
+                    status:
+                      $ref: "#/components/schemas/TaskStatus"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Labor ───────────────────────────────────────────────────────────────────
+  /labor/overview:
+    get:
+      tags: [Labor]
+      summary: Labor overview for a given date
+      parameters:
+        - name: date
+          in: query
+          description: "Date in YYYY-MM-DD format (defaults to today)"
+          schema:
+            type: string
+            format: date
+            example: "2026-04-17"
+      responses:
+        "200":
+          description: Labor overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LaborOverview"
+
+  /labor/operator-performance:
+    get:
+      tags: [Labor]
+      summary: Per-operator performance metrics for a given date
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated operator performance
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OperatorPerformance"
+
+  /labor/zone-workload:
+    get:
+      tags: [Labor]
+      summary: Task workload per zone
+      parameters:
+        - name: warehouse_id
+          in: query
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated zone workload
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ZoneWorkload"
+
+  # ── Sales Orders ─────────────────────────────────────────────────────────────
+  /sales-orders:
+    post:
+      tags: [Sales Orders]
+      summary: Create a sales order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesOrderInput"
+      responses:
+        "201":
+          description: Sales order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+        "200":
+          description: Duplicate — order with this sourceDocumentId already exists (skipped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      tags: [Sales Orders]
+      summary: List sales orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/SalesOrderStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated sales order list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SalesOrder"
+
+  /sales-orders/alerts:
+    get:
+      tags: [Sales Orders]
+      summary: List active inventory alerts for sales orders
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated alert list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryAlert"
+
+  /sales-orders/reevaluate:
+    post:
+      tags: [Sales Orders]
+      summary: Re-evaluate all pending_inventory sales orders
+      responses:
+        "200":
+          description: Reevaluation statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReevaluateStats"
+
+  /sales-orders/{salesOrderId}:
+    get:
+      tags: [Sales Orders]
+      summary: Get sales order by ID
+      parameters:
+        - $ref: "#/components/parameters/salesOrderId"
+      responses:
+        "200":
+          description: Sales order with lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Sales Orders]
+      summary: Cancel a sales order
+      parameters:
+        - $ref: "#/components/parameters/salesOrderId"
+      responses:
+        "200":
+          description: Cancelled sales order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Purchase Orders ──────────────────────────────────────────────────────────
+  /purchase-orders:
+    get:
+      tags: [Purchase Orders]
+      summary: List purchase orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/PurchaseOrderStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated purchase order list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PurchaseOrder"
+
+  /purchase-orders/reevaluate:
+    post:
+      tags: [Purchase Orders]
+      summary: Re-evaluate all pending_capacity purchase orders
+      responses:
+        "200":
+          description: Reevaluation statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReevaluateStats"
+
+  /purchase-orders/{purchaseOrderId}:
+    get:
+      tags: [Purchase Orders]
+      summary: Get purchase order by ID
+      parameters:
+        - $ref: "#/components/parameters/purchaseOrderId"
+      responses:
+        "200":
+          description: Purchase order with lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Purchase Orders]
+      summary: Cancel a purchase order
+      parameters:
+        - $ref: "#/components/parameters/purchaseOrderId"
+      responses:
+        "200":
+          description: Cancelled purchase order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Shipments ────────────────────────────────────────────────────────────────
+  /shipments:
+    get:
+      tags: [Shipments]
+      summary: List shipments
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShipmentStatus"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated shipment list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Shipment"
+
+  /shipments/manifest:
+    get:
+      tags: [Shipments]
+      summary: End-of-day dispatch manifest
+      description: Requires admin, warehouse_manager, or supervisor role.
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Manifest for the date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  shipments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Shipment"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /shipments/dispatch:
+    post:
+      tags: [Shipments]
+      summary: Dispatch one or more shipments
+      description: Requires admin, warehouse_manager, or supervisor role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shipmentIds]
+              properties:
+                shipmentIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Dispatch result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dispatched:
+                    type: integer
+                  shipments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Shipment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /shipments/{shipmentId}/label:
+    patch:
+      tags: [Shipments]
+      summary: Attach shipping label to a shipment
+      description: Requires admin, warehouse_manager, or supervisor role.
+      parameters:
+        - name: shipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [carrier, trackingNumber, labelUrl]
+              properties:
+                carrier:
+                  type: string
+                trackingNumber:
+                  type: string
+                labelUrl:
+                  type: string
+                  format: uri
+      responses:
+        "200":
+          description: Updated shipment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Order Events ─────────────────────────────────────────────────────────────
+  /order-events:
+    post:
+      tags: [Order Events]
+      summary: Submit a task generation event
+      description: Enqueues an order event that generates pick or putaway tasks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderEventInput"
+      responses:
+        "202":
+          description: Event accepted and queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                    example: true
+                  type:
+                    type: string
+                  sourceDocumentId:
+                    type: string
+                  eventKey:
+                    type: string
+                  queueName:
+                    type: string
+                  jobId:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ── WMS ──────────────────────────────────────────────────────────────────────
+  /summary:
+    get:
+      tags: [WMS]
+      summary: Warehouse summary counts
+      responses:
+        "200":
+          description: Aggregate counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  warehouseCount:
+                    type: integer
+                  locationCount:
+                    type: integer
+                  skuCount:
+                    type: integer
+                  totalUnits:
+                    type: integer
+
+  /inventory:
+    get:
+      tags: [WMS]
+      summary: Full inventory listing
+      responses:
+        "200":
+          description: All inventory records with SKU, location, and warehouse info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryRecord"
+
+  /movements:
+    get:
+      tags: [WMS]
+      summary: Recent inventory movements
+      parameters:
+        - name: limit
+          in: query
+          description: Number of movements to return (max 100, default 20)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Movement records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Movement"
+    post:
+      tags: [WMS]
+      summary: Record an inventory movement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovementInput"
+      responses:
+        "201":
+          description: Movement recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Movement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ── Warehouses ───────────────────────────────────────────────────────────────
+  /warehouses:
+    get:
+      tags: [Warehouses]
+      summary: List warehouses
+      responses:
+        "200":
+          description: Warehouses with location counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Warehouse"
+    post:
+      tags: [Warehouses]
+      summary: Create a warehouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code:
+                  type: string
+                  example: WH-EAST-01
+                name:
+                  type: string
+                  example: East Coast Fulfillment
+      responses:
+        "201":
+          description: Created warehouse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /warehouses/{id}:
+    get:
+      tags: [Warehouses]
+      summary: Get warehouse by ID
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: Warehouse object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Warehouses]
+      summary: Update warehouse
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Updated warehouse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Warehouses]
+      summary: Delete warehouse
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Zones ────────────────────────────────────────────────────────────────────
+  /zones:
+    get:
+      tags: [Zones]
+      summary: List zones
+      parameters:
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Zones with location counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zone"
+    post:
+      tags: [Zones]
+      summary: Create a zone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouseId, name, type]
+              properties:
+                warehouseId:
+                  type: integer
+                name:
+                  type: string
+                type:
+                  $ref: "#/components/schemas/ZoneType"
+      responses:
+        "201":
+          description: Created zone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /zones/{id}:
+    get:
+      tags: [Zones]
+      summary: Get zone by ID
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: Zone object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Zones]
+      summary: Update zone
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                type:
+                  $ref: "#/components/schemas/ZoneType"
+      responses:
+        "200":
+          description: Updated zone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Zones]
+      summary: Delete zone
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Locations ────────────────────────────────────────────────────────────────
+  /locations:
+    get:
+      tags: [Locations]
+      summary: List locations
+      parameters:
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: zoneId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/LocationStatus"
+      responses:
+        "200":
+          description: Locations with warehouse and zone info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Location"
+    post:
+      tags: [Locations]
+      summary: Create a location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zoneId, code, name]
+              properties:
+                zoneId:
+                  type: integer
+                code:
+                  type: string
+                name:
+                  type: string
+                status:
+                  $ref: "#/components/schemas/LocationStatus"
+                type:
+                  $ref: "#/components/schemas/LocationType"
+                capacity:
+                  type: integer
+                  minimum: 1
+      responses:
+        "201":
+          description: Created location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /locations/{id}:
+    get:
+      tags: [Locations]
+      summary: Get location by ID
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: Location object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Locations]
+      summary: Update location
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                status:
+                  $ref: "#/components/schemas/LocationStatus"
+                type:
+                  $ref: "#/components/schemas/LocationType"
+                capacity:
+                  type: integer
+                  minimum: 1
+                zoneId:
+                  type: integer
+      responses:
+        "200":
+          description: Updated location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Locations]
+      summary: Delete location
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /locations/{id}/status:
+    patch:
+      tags: [Locations]
+      summary: Update location status
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: "#/components/schemas/LocationStatus"
+      responses:
+        "200":
+          description: Updated location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── SKUs ─────────────────────────────────────────────────────────────────────
+  /skus:
+    get:
+      tags: [SKUs]
+      summary: List SKUs
+      responses:
+        "200":
+          description: All SKUs with total inventory quantity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SKU"
+    post:
+      tags: [SKUs]
+      summary: Create a SKU
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SKUInput"
+      responses:
+        "201":
+          description: Created SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SKU"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /skus/{id}:
+    get:
+      tags: [SKUs]
+      summary: Get SKU by ID
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: SKU with total inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SKU"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [SKUs]
+      summary: Update SKU
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SKUInput"
+      responses:
+        "200":
+          description: Updated SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SKU"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [SKUs]
+      summary: Delete SKU
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Users ────────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      description: Requires admin, warehouse_manager, or supervisor role.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Users]
+      summary: Create a user
+      description: Requires admin role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, displayName, role]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                displayName:
+                  type: string
+                role:
+                  $ref: "#/components/schemas/UserRole"
+                operatorId:
+                  type: string
+                  format: uuid
+                  description: Link to an operator record (required for operator role)
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      description: Requires admin, warehouse_manager, or supervisor role.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: User object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Users]
+      summary: Update user
+      description: |
+        Requires admin, warehouse_manager, or supervisor.
+        Non-admin roles may only toggle `isActive`.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                role:
+                  $ref: "#/components/schemas/UserRole"
+                operatorId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                isActive:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Users]
+      summary: Delete user
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/{userId}/reset-password:
+    post:
+      tags: [Users]
+      summary: Reset a user's password
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Integrations ─────────────────────────────────────────────────────────────
+  /integrations/connector-types:
+    get:
+      tags: [Integrations]
+      summary: List available connector types
+      responses:
+        "200":
+          description: Connector type definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: generic-webhook
+                    label:
+                      type: string
+
+  /integrations:
+    get:
+      tags: [Integrations]
+      summary: List integrations
+      responses:
+        "200":
+          description: Array of integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Integration"
+    post:
+      tags: [Integrations]
+      summary: Create an integration
+      description: Requires admin role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationInput"
+      responses:
+        "201":
+          description: Created integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /integrations/{id}:
+    get:
+      tags: [Integrations]
+      summary: Get integration by ID
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: Integration object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Integrations]
+      summary: Update integration
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationInput"
+      responses:
+        "200":
+          description: Updated integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Integrations]
+      summary: Delete integration
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /integrations/{id}/toggle:
+    patch:
+      tags: [Integrations]
+      summary: Enable or disable an integration
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isEnabled]
+              properties:
+                isEnabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /integrations/{id}/test:
+    post:
+      tags: [Integrations]
+      summary: Send a test event to an integration
+      description: Requires admin role.
+      parameters:
+        - $ref: "#/components/parameters/intId"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  statusCode:
+                    type: integer
+                  message:
+                    type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /integrations/{id}/events:
+    get:
+      tags: [Integrations]
+      summary: Integration event log
+      parameters:
+        - $ref: "#/components/parameters/intId"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated event log
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IntegrationEvent"
+
+  # ── Webhooks ─────────────────────────────────────────────────────────────────
+  /webhook/oauth/token:
+    post:
+      tags: [Webhooks]
+      summary: OAuth2 client credentials token endpoint
+      description: |
+        Issues a short-lived Bearer token for inbound webhook authentication
+        when the integration is configured with `oauth2` inbound auth type.
+        Accepts either `application/x-www-form-urlencoded` or `application/json`.
+        Client credentials may be sent in the body or via HTTP Basic auth.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials]
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials]
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        "200":
+          description: Access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: Bearer
+                  expires_in:
+                    type: integer
+                    description: Seconds until expiry
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /webhook/{connectorType}:
+    post:
+      tags: [Webhooks]
+      summary: Inbound webhook event receiver
+      description: |
+        Receives external system events (order.created, order.cancelled,
+        product.synced, etc.). Authentication method depends on the
+        integration's `inboundAuthType` setting (`none`, `apikey`,
+        `basic`, `bearer`, `oauth2`).
+      security: []
+      parameters:
+        - name: connectorType
+          in: path
+          required: true
+          schema:
+            type: string
+            example: generic-webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Connector-specific event payload
+              properties:
+                event_type:
+                  type: string
+                  example: inbound.order.created
+      responses:
+        "200":
+          description: Event received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+                  eventType:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Components
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    intId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    operatorId:
+      name: operatorId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    taskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    salesOrderId:
+      name: salesOrderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    purchaseOrderId:
+      name: purchaseOrderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Optimistic lock conflict or invalid state transition
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Resource not found
+
+    PaginatedResponse:
+      type: object
+      properties:
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+
+    # ── Enums ──────────────────────────────────────────────────────────────────
+    OperatorStatus:
+      type: string
+      enum: [available, busy, offline]
+
+    TaskStatus:
+      type: string
+      enum: [created, assigned, in_progress, paused, completed, cancelled, failed]
+
+    ZoneType:
+      type: string
+      enum: [pick, bulk, dock, staging, packing]
+
+    LocationType:
+      type: string
+      enum: [rack, shelf, bin, floor, dock, staging]
+
+    LocationStatus:
+      type: string
+      enum: [active, locked]
+
+    UserRole:
+      type: string
+      enum: [admin, warehouse_manager, supervisor, operator, viewer]
+
+    SalesOrderStatus:
+      type: string
+      enum: [pending_inventory, ready, released, completed, cancelled]
+
+    PurchaseOrderStatus:
+      type: string
+      enum: [received, pending_capacity, in_progress, completed, cancelled]
+
+    ShipmentStatus:
+      type: string
+      enum: [pending, labeled, dispatched, delivered]
+
+    IntegrationDirection:
+      type: string
+      enum: [inbound, outbound, bidirectional]
+
+    MovementType:
+      type: string
+      enum: [INBOUND, OUTBOUND, TRANSFER, ADJUSTMENT]
+
+    # ── Core entities ──────────────────────────────────────────────────────────
+    Operator:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: "e.g. pick, putaway, pack"
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          type: integer
+        version:
+          type: integer
+          description: Optimistic lock version — must be passed back on transitions
+        assignedOperatorId:
+          type: string
+          format: uuid
+          nullable: true
+        zoneId:
+          type: integer
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        actualTimeSeconds:
+          type: integer
+          nullable: true
+        estimatedTimeSeconds:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskLine"
+
+    TaskLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        skuId:
+          type: integer
+        quantity:
+          type: integer
+        fromLocationId:
+          type: integer
+          nullable: true
+        toLocationId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [created, in_progress, completed, cancelled, failed]
+
+    TaskTransitionBody:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          description: Current task version (optimistic lock)
+        changedByOperatorId:
+          type: string
+          format: uuid
+          nullable: true
+
+    Warehouse:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        locationCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    Zone:
+      type: object
+      properties:
+        id:
+          type: integer
+        warehouseId:
+          type: integer
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ZoneType"
+        locationCount:
+          type: integer
+
+    Location:
+      type: object
+      properties:
+        id:
+          type: integer
+        zoneId:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/LocationStatus"
+        type:
+          $ref: "#/components/schemas/LocationType"
+        capacity:
+          type: integer
+        warehouseId:
+          type: integer
+        warehouseName:
+          type: string
+        zoneName:
+          type: string
+
+    SKU:
+      type: object
+      properties:
+        id:
+          type: integer
+        sku:
+          type: string
+        description:
+          type: string
+          nullable: true
+        weightKg:
+          type: number
+          nullable: true
+        dimensionXCm:
+          type: number
+          nullable: true
+        dimensionYCm:
+          type: number
+          nullable: true
+        dimensionZCm:
+          type: number
+          nullable: true
+        pictureUrl:
+          type: string
+          format: uri
+          nullable: true
+        barcodes:
+          type: array
+          items:
+            type: string
+        totalQuantity:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SKUInput:
+      type: object
+      required: [sku]
+      properties:
+        sku:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        weightKg:
+          type: number
+          minimum: 0
+        dimensionXCm:
+          type: number
+          minimum: 0
+        dimensionYCm:
+          type: number
+          minimum: 0
+        dimensionZCm:
+          type: number
+          minimum: 0
+        pictureUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+        barcodes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+
+    InventoryRecord:
+      type: object
+      properties:
+        skuId:
+          type: integer
+        sku:
+          type: string
+        description:
+          type: string
+          nullable: true
+        locationId:
+          type: integer
+        locationCode:
+          type: string
+        locationName:
+          type: string
+        zoneId:
+          type: integer
+        zoneName:
+          type: string
+        warehouseId:
+          type: integer
+        warehouseName:
+          type: string
+        quantity:
+          type: integer
+
+    Movement:
+      type: object
+      properties:
+        id:
+          type: integer
+        skuId:
+          type: integer
+        sku:
+          type: string
+        quantity:
+          type: integer
+        movementType:
+          $ref: "#/components/schemas/MovementType"
+        fromLocationId:
+          type: integer
+          nullable: true
+        toLocationId:
+          type: integer
+          nullable: true
+        reference:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    MovementInput:
+      type: object
+      required: [skuId, quantity]
+      properties:
+        skuId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+        fromLocationId:
+          type: integer
+          nullable: true
+        toLocationId:
+          type: integer
+          nullable: true
+        reference:
+          type: string
+
+    SalesOrderInput:
+      type: object
+      required: [sourceDocumentId, lines]
+      properties:
+        sourceDocumentId:
+          type: string
+          description: External document ID (idempotency key)
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [skuId, quantity]
+            properties:
+              skuId:
+                type: integer
+              quantity:
+                type: integer
+                minimum: 1
+
+    SalesOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceDocumentId:
+          type: string
+        status:
+          $ref: "#/components/schemas/SalesOrderStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              skuId:
+                type: integer
+              sku:
+                type: string
+              quantity:
+                type: integer
+              status:
+                type: string
+                enum: [pending, resolved, short]
+
+    PurchaseOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceDocumentId:
+          type: string
+        status:
+          $ref: "#/components/schemas/PurchaseOrderStatus"
+        strategy:
+          type: string
+          enum: [RANDOM, CONSOLIDATION, EMPTY]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              skuId:
+                type: integer
+              sku:
+                type: string
+              quantity:
+                type: integer
+
+    InventoryAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        salesOrderId:
+          type: string
+          format: uuid
+        skuId:
+          type: integer
+        sku:
+          type: string
+        requestedQuantity:
+          type: integer
+        availableQuantity:
+          type: integer
+        status:
+          type: string
+          enum: [active, resolved, dismissed]
+        createdAt:
+          type: string
+          format: date-time
+
+    ReevaluateStats:
+      type: object
+      properties:
+        evaluated:
+          type: integer
+        released:
+          type: integer
+        stillPending:
+          type: integer
+
+    Shipment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        salesOrderId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ShipmentStatus"
+        carrier:
+          type: string
+          nullable: true
+        trackingNumber:
+          type: string
+          nullable: true
+        labelUrl:
+          type: string
+          format: uri
+          nullable: true
+        dispatchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    OrderEventInput:
+      type: object
+      required: [type, sourceDocumentId, lines]
+      properties:
+        type:
+          type: string
+          description: "Event type: OUTBOUND_ORDER or INBOUND_ORDER"
+          example: OUTBOUND_ORDER
+        sourceDocumentId:
+          type: string
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [skuId, quantity]
+            properties:
+              skuId:
+                type: integer
+              quantity:
+                type: integer
+                minimum: 1
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        operatorId:
+          type: string
+          format: uuid
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Integration:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        connectorType:
+          type: string
+          example: generic-webhook
+        direction:
+          $ref: "#/components/schemas/IntegrationDirection"
+        isEnabled:
+          type: boolean
+        webhookUrl:
+          type: string
+          format: uri
+          nullable: true
+        outboundAuthType:
+          type: string
+          enum: [none, header, basic, jwt, oauth2]
+          nullable: true
+        inboundAuthType:
+          type: string
+          enum: [none, apikey, basic, bearer, oauth2]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    IntegrationInput:
+      type: object
+      required: [name, connectorType, direction]
+      properties:
+        name:
+          type: string
+        connectorType:
+          type: string
+          example: generic-webhook
+        direction:
+          $ref: "#/components/schemas/IntegrationDirection"
+        webhookUrl:
+          type: string
+          format: uri
+        outboundAuthType:
+          type: string
+          enum: [none, header, basic, jwt, oauth2]
+        outboundAuthConfig:
+          type: object
+          description: Auth credentials/config — shape depends on outboundAuthType
+          additionalProperties: true
+        inboundAuthType:
+          type: string
+          enum: [none, apikey, basic, bearer, oauth2]
+        inboundAuthConfig:
+          type: object
+          description: Auth validation config — shape depends on inboundAuthType
+          additionalProperties: true
+        fieldMappings:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceField:
+                type: string
+              targetField:
+                type: string
+
+    IntegrationEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        integrationId:
+          type: integer
+        direction:
+          $ref: "#/components/schemas/IntegrationDirection"
+        eventType:
+          type: string
+        status:
+          type: string
+          enum: [pending, success, failed]
+        requestPayload:
+          type: object
+          nullable: true
+        responseStatus:
+          type: integer
+          nullable: true
+        responseBody:
+          type: string
+          nullable: true
+        attemptCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    LaborOverview:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        availableOperators:
+          type: integer
+        busyOperators:
+          type: integer
+        offlineOperators:
+          type: integer
+        createdTasks:
+          type: integer
+        assignedTasks:
+          type: integer
+        inProgressTasks:
+          type: integer
+        pausedTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        cancelledTasks:
+          type: integer
+        failedTasks:
+          type: integer
+        tasksCompleted:
+          type: integer
+          description: Completed tasks from labor_daily_metrics for the date
+        unitsProcessed:
+          type: integer
+        avgTaskTime:
+          type: number
+          format: double
+          description: Average task time in seconds
+
+    OperatorPerformance:
+      type: object
+      properties:
+        operatorId:
+          type: string
+          format: uuid
+        operatorName:
+          type: string
+        role:
+          type: string
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+        tasksCompleted:
+          type: integer
+        unitsProcessed:
+          type: integer
+        avgTaskTime:
+          type: number
+          format: double
+        activeTasks:
+          type: integer
+        currentTaskId:
+          type: string
+          format: uuid
+          nullable: true
+        currentTaskType:
+          type: string
+          nullable: true
+        currentTaskStatus:
+          $ref: "#/components/schemas/TaskStatus"
+          nullable: true
+        currentZoneName:
+          type: string
+          nullable: true
+
+    ZoneWorkload:
+      type: object
+      properties:
+        zoneId:
+          type: integer
+        zoneName:
+          type: string
+        zoneType:
+          $ref: "#/components/schemas/ZoneType"
+        warehouseId:
+          type: integer
+        totalTasks:
+          type: integer
+        createdTasks:
+          type: integer
+        assignedTasks:
+          type: integer
+        inProgressTasks:
+          type: integer
+        pausedTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        cancelledTasks:
+          type: integer
+        failedTasks:
+          type: integer
+        avgPriority:
+          type: number
+          format: double
