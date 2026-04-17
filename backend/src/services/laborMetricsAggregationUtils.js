@@ -47,21 +47,7 @@ const parseAggregationDate = (value) => {
   return text;
 };
 
-const calculateUtilizationPercent = (totalActiveTimeSeconds, shiftDurationSeconds) => {
-  const safeActiveTime = Number.isFinite(totalActiveTimeSeconds) ? Math.max(0, totalActiveTimeSeconds) : 0;
-  const safeShiftDuration = Number.isFinite(shiftDurationSeconds) ? shiftDurationSeconds : 0;
-
-  if (safeShiftDuration <= 0) {
-    return 0;
-  }
-
-  const rawPercent = (safeActiveTime / safeShiftDuration) * 100;
-  const clampedPercent = Math.min(100, Math.max(0, rawPercent));
-  return Number(clampedPercent.toFixed(2));
-};
-
 module.exports = {
-  calculateUtilizationPercent,
   parseAggregationDate,
   toLocalIsoDate
 };

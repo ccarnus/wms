@@ -625,16 +625,15 @@ const seed = async () => {
     for (let d = 1; d <= 14; d++) {
       const v = () => 0.8 + Math.random() * 0.4;
       await query(`
-        INSERT INTO labor_daily_metrics (operator_id, date, tasks_completed, units_processed, avg_task_time, utilization_percent)
-        VALUES ($1, CURRENT_DATE - $2::int, $3, $4, $5, $6)
+        INSERT INTO labor_daily_metrics (operator_id, date, tasks_completed, units_processed, avg_task_time)
+        VALUES ($1, CURRENT_DATE - $2::int, $3, $4, $5)
         ON CONFLICT (operator_id, date) DO NOTHING
       `, [
         op.id,
         d,
         Math.round(op.avgTasks * v()),
         Math.round(op.avgUnits * v()),
-        Math.round(op.avgTime  * v() * 10) / 10,
-        Math.min(100, Math.round(op.avgUtil * v() * 100) / 100)
+        Math.round(op.avgTime  * v() * 10) / 10
       ]);
     }
   }

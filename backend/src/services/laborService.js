@@ -67,8 +67,7 @@ const getLaborOverview = async ({ date = null } = {}) => {
       (SELECT COUNT(*)::int FROM tasks WHERE status = 'failed'::task_status) AS "failedTasks",
       (SELECT COALESCE(SUM(ldm.tasks_completed), 0)::int FROM labor_daily_metrics ldm WHERE ldm.date = $1::date) AS "tasksCompleted",
       (SELECT COALESCE(SUM(ldm.units_processed), 0)::int FROM labor_daily_metrics ldm WHERE ldm.date = $1::date) AS "unitsProcessed",
-      (SELECT COALESCE(AVG(ldm.avg_task_time), 0)::double precision FROM labor_daily_metrics ldm WHERE ldm.date = $1::date) AS "avgTaskTime",
-      (SELECT COALESCE(AVG(ldm.utilization_percent), 0)::double precision FROM labor_daily_metrics ldm WHERE ldm.date = $1::date) AS "avgUtilizationPercent"`,
+      (SELECT COALESCE(AVG(ldm.avg_task_time), 0)::double precision FROM labor_daily_metrics ldm WHERE ldm.date = $1::date) AS "avgTaskTime"`,
     [effectiveDate]
   );
 
@@ -91,7 +90,6 @@ const getLaborOperatorPerformance = async ({ date = null, page = 1, limit = 50 }
       COALESCE(ldm.tasks_completed, 0)::int AS "tasksCompleted",
       COALESCE(ldm.units_processed, 0)::int AS "unitsProcessed",
       COALESCE(ldm.avg_task_time, 0)::double precision AS "avgTaskTime",
-      COALESCE(ldm.utilization_percent, 0)::double precision AS "utilizationPercent",
       COALESCE(active.active_tasks, 0)::int AS "activeTasks",
       current_task.id AS "currentTaskId",
       current_task.type AS "currentTaskType",

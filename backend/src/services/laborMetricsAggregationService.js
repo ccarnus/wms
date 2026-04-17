@@ -51,8 +51,7 @@ const UPSERT_SQL_PREFIX = `INSERT INTO labor_daily_metrics (
   date,
   tasks_completed,
   units_processed,
-  avg_task_time,
-  utilization_percent
+  avg_task_time
 )
 VALUES `;
 
@@ -61,13 +60,11 @@ ON CONFLICT (operator_id, date) DO UPDATE
 SET
   tasks_completed = EXCLUDED.tasks_completed,
   units_processed = EXCLUDED.units_processed,
-  avg_task_time = EXCLUDED.avg_task_time,
-  utilization_percent = EXCLUDED.utilization_percent
+  avg_task_time = EXCLUDED.avg_task_time
 RETURNING
   tasks_completed,
   units_processed,
   avg_task_time,
-  utilization_percent,
   (xmax = 0) AS inserted`;
 
 const normalizeMetricsRow = (row) => ({
@@ -92,8 +89,7 @@ const buildUpsertRows = (operatorRows, metricsByOperator, effectiveDate) =>
       date: effectiveDate,
       tasksCompleted: metricValues.tasksCompleted,
       unitsProcessed: metricValues.unitsProcessed,
-      avgTaskTime: metricValues.avgTaskTime,
-      utilizationPercent: 0
+      avgTaskTime: metricValues.avgTaskTime
     };
   });
 
@@ -108,11 +104,10 @@ const buildUpsertQuery = (rows) => {
       row.date,
       row.tasksCompleted,
       row.unitsProcessed,
-      row.avgTaskTime,
-      row.utilizationPercent
+      row.avgTaskTime
     );
     placeholders.push(
-      `($${startIndex}, $${startIndex + 1}::date, $${startIndex + 2}, $${startIndex + 3}, $${startIndex + 4}, $${startIndex + 5})`
+      `($${startIndex}, $${startIndex + 1}::date, $${startIndex + 2}, $${startIndex + 3}, $${startIndex + 4})`
     );
   }
 
@@ -165,15 +160,9 @@ const aggregateLaborDailyMetrics = async ({ date } = {}) => {
 
     const totals = upsertResult.rows.reduce(
       (acc, row) => {
-        const tasksCompleted = Number(row.tasks_completed || 0);
-        const unitsProcessed = Number(row.units_processed || 0);
-        const avgTaskTime = Number(row.avg_task_time || 0);
-        const utilizationPercent = Number(row.utilization_percent || 0);
-
-        acc.totalTasksCompleted += tasksCompleted;
-        acc.totalUnitsProcessed += unitsProcessed;
-        acc.totalAvgTaskTime += avgTaskTime;
-        acc.totalUtilizationPercent += utilizationPercent;
+        acc.totalTasksCompleted += Number(row.tasks_completed || 0);
+        acc.totalUnitsProcessed += Number(row.units_processed || 0);
+        acc.totalAvgTaskTime += Number(row.avg_task_time || 0);
         if (row.inserted) {
           acc.insertedCount += 1;
         } else {
@@ -181,14 +170,7 @@ const aggregateLaborDailyMetrics = async ({ date } = {}) => {
         }
         return acc;
       },
-      {
-        insertedCount: 0,
-        updatedCount: 0,
-        totalTasksCompleted: 0,
-        totalUnitsProcessed: 0,
-        totalAvgTaskTime: 0,
-        totalUtilizationPercent: 0
-      }
+      { insertedCount: 0, updatedCount: 0, totalTasksCompleted: 0, totalUnitsProcessed: 0, totalAvgTaskTime: 0 }
     );
 
     const operatorsProcessed = upsertResult.rowCount;
@@ -200,11 +182,7 @@ const aggregateLaborDailyMetrics = async ({ date } = {}) => {
       totalTasksCompleted: totals.totalTasksCompleted,
       totalUnitsProcessed: totals.totalUnitsProcessed,
       averageTaskTimeSeconds:
-        operatorsProcessed > 0 ? Number((totals.totalAvgTaskTime / operatorsProcessed).toFixed(2)) : 0,
-      averageUtilizationPercent:
-        operatorsProcessed > 0
-          ? Number((totals.totalUtilizationPercent / operatorsProcessed).toFixed(2))
-          : 0
+        operatorsProcessed > 0 ? Number((totals.totalAvgTaskTime / operatorsProcessed).toFixed(2)) : 0
     };
   } catch (error) {
     if (inTransaction) {

@@ -203,9 +203,6 @@ CREATE TABLE IF NOT EXISTS labor_daily_metrics (
   tasks_completed INT NOT NULL DEFAULT 0 CHECK (tasks_completed >= 0),
   units_processed INT NOT NULL DEFAULT 0 CHECK (units_processed >= 0),
   avg_task_time DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (avg_task_time >= 0),
-  utilization_percent NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (
-    utilization_percent >= 0 AND utilization_percent <= 100
-  ),
   UNIQUE (operator_id, date)
 );
 
