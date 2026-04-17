@@ -2,22 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  calculateShiftDurationSeconds,
   calculateUtilizationPercent,
   parseAggregationDate
 } = require("../src/services/laborMetricsAggregationUtils");
-
-test("calculateShiftDurationSeconds handles normal daytime shifts", () => {
-  assert.equal(calculateShiftDurationSeconds("08:00:00", "16:00:00"), 8 * 60 * 60);
-});
-
-test("calculateShiftDurationSeconds handles overnight shifts", () => {
-  assert.equal(calculateShiftDurationSeconds("22:30:00", "06:15:00"), 7 * 60 * 60 + 45 * 60);
-});
-
-test("calculateShiftDurationSeconds returns 0 when start and end are equal", () => {
-  assert.equal(calculateShiftDurationSeconds("08:00:00", "08:00:00"), 0);
-});
 
 test("calculateUtilizationPercent rounds to 2 decimals and clamps to 100", () => {
   assert.equal(calculateUtilizationPercent(3600, 28800), 12.5);

@@ -1,6 +1,4 @@
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_PATTERN = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
-const SECONDS_PER_DAY = 24 * 60 * 60;
 
 const toLocalIsoDate = (value = new Date()) => {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
@@ -49,38 +47,6 @@ const parseAggregationDate = (value) => {
   return text;
 };
 
-const parseTimeToSeconds = (value, fieldName) => {
-  const match = typeof value === "string" ? value.match(TIME_PATTERN) : null;
-  if (!match) {
-    throw new Error(`Invalid ${fieldName} time value '${value}'`);
-  }
-
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const second = Number(match[3] || "0");
-
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
-    throw new Error(`Invalid ${fieldName} time value '${value}'`);
-  }
-
-  return hour * 3600 + minute * 60 + second;
-};
-
-const calculateShiftDurationSeconds = (shiftStart, shiftEnd) => {
-  const shiftStartSeconds = parseTimeToSeconds(shiftStart, "shift_start");
-  const shiftEndSeconds = parseTimeToSeconds(shiftEnd, "shift_end");
-
-  if (shiftStartSeconds === shiftEndSeconds) {
-    return 0;
-  }
-
-  if (shiftEndSeconds > shiftStartSeconds) {
-    return shiftEndSeconds - shiftStartSeconds;
-  }
-
-  return SECONDS_PER_DAY - shiftStartSeconds + shiftEndSeconds;
-};
-
 const calculateUtilizationPercent = (totalActiveTimeSeconds, shiftDurationSeconds) => {
   const safeActiveTime = Number.isFinite(totalActiveTimeSeconds) ? Math.max(0, totalActiveTimeSeconds) : 0;
   const safeShiftDuration = Number.isFinite(shiftDurationSeconds) ? shiftDurationSeconds : 0;
@@ -95,7 +61,6 @@ const calculateUtilizationPercent = (totalActiveTimeSeconds, shiftDurationSecond
 };
 
 module.exports = {
-  calculateShiftDurationSeconds,
   calculateUtilizationPercent,
   parseAggregationDate,
   toLocalIsoDate

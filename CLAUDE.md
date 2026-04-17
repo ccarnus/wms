@@ -84,7 +84,7 @@ Workers (separate Node processes, same Docker image as backend):
 
 ### Database (`database/init/`)
 
-Single `001_schema.sql` file contains the complete schema: all enums, tables (warehouses, zones, locations, skus, inventory, movements, operators, operator_zones, tasks, task_lines, task_status_audit_logs, task_generation_events, sales_orders, sales_order_lines, inventory_alerts, users, integrations, integration_field_mappings, integration_event_log, labor_daily_metrics), indexes, trigger function, and triggers.
+Single `001_schema.sql` file contains the complete schema: all enums, tables (warehouses, zones, locations, skus, inventory, movements, operators, tasks, task_lines, task_status_audit_logs, task_generation_events, sales_orders, sales_order_lines, inventory_alerts, users, integrations, integration_field_mappings, integration_event_log, labor_daily_metrics), indexes, trigger function, and triggers.
 
 Key tables not obvious from names:
 - **`task_generation_events`** — Deduplication cache keyed by `event_key` (UNIQUE). Prevents reprocessing the same order event.

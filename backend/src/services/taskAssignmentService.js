@@ -35,7 +35,6 @@ const lockCandidateTasks = async (client, batchSize) => {
   const { rows } = await client.query(
     `SELECT
       t.id,
-      t.zone_id,
       t.priority
      FROM tasks t
      WHERE t.status = 'created'::task_status
@@ -48,76 +47,26 @@ const lockCandidateTasks = async (client, batchSize) => {
   return rows;
 };
 
-const findZonesForTask = async (client, taskId) => {
-  const { rows } = await client.query(
-    `SELECT DISTINCT l.zone_id
-     FROM task_lines tl
-     JOIN locations l ON l.id = COALESCE(tl.from_location_id, tl.to_location_id)
-     WHERE tl.task_id = $1
-       AND COALESCE(tl.from_location_id, tl.to_location_id) IS NOT NULL`,
-    [taskId]
-  );
-  return rows.map((r) => r.zone_id);
-};
-
-const findBestAvailableOperatorForZone = async (client, zoneId, dateValue) => {
+const findBestAvailableOperator = async (client, dateValue) => {
   const { rows } = await client.query(
     `SELECT
       o.id,
       COALESCE(ldm.tasks_completed, 0)::int AS workload
      FROM operators o
-     INNER JOIN operator_zones oz
-       ON oz.operator_id = o.id
-      AND oz.zone_id = $1
      LEFT JOIN labor_daily_metrics ldm
        ON ldm.operator_id = o.id
-      AND ldm.date = $2::date
+      AND ldm.date = $1::date
      WHERE o.status = 'available'::operator_status
        AND NOT EXISTS (
          SELECT 1
          FROM tasks t
          WHERE t.assigned_operator_id = o.id
-           AND t.status = ANY($3::task_status[])
+           AND t.status = ANY($2::task_status[])
        )
-     ORDER BY workload ASC, o.performance_score DESC, o.created_at ASC
+     ORDER BY workload ASC, o.created_at ASC
      LIMIT 1
      FOR UPDATE OF o SKIP LOCKED`,
-    [zoneId, dateValue, ACTIVE_TASK_STATUSES]
-  );
-
-  if (rows.length === 0) {
-    return null;
-  }
-
-  return {
-    operatorId: rows[0].id,
-    workload: rows[0].workload
-  };
-};
-
-const findBestAvailableOperatorForZones = async (client, zoneIds, dateValue) => {
-  const { rows } = await client.query(
-    `SELECT
-      o.id,
-      COALESCE(ldm.tasks_completed, 0)::int AS workload
-     FROM operators o
-     INNER JOIN operator_zones oz
-       ON oz.operator_id = o.id
-      AND oz.zone_id = ANY($1::uuid[])
-     LEFT JOIN labor_daily_metrics ldm
-       ON ldm.operator_id = o.id
-      AND ldm.date = $2::date
-     WHERE o.status = 'available'::operator_status
-       AND NOT EXISTS (
-         SELECT 1
-         FROM tasks t
-         WHERE t.assigned_operator_id = o.id
-           AND t.status = ANY($3::task_status[])
-       )
-     ORDER BY workload ASC, o.performance_score DESC, o.created_at ASC
-     LIMIT 1
-     FOR UPDATE OF o SKIP LOCKED`,
-    [zoneIds, dateValue, ACTIVE_TASK_STATUSES]
+    [dateValue, ACTIVE_TASK_STATUSES]
   );
 
   if (rows.length === 0) {
@@ -210,17 +159,7 @@ const assignTasks = async (options = {}) => {
     stats.scannedTasks = candidateTasks.length;
 
     for (const candidateTask of candidateTasks) {
-      let selectedOperator;
-      if (candidateTask.zone_id) {
-        selectedOperator = await findBestAvailableOperatorForZone(client, candidateTask.zone_id, dateValue);
-      } else {
-        const zoneIds = await findZonesForTask(client, candidateTask.id);
-        if (zoneIds.length === 0) {
-          stats.unassignedTasks += 1;
-          continue;
-        }
-        selectedOperator = await findBestAvailableOperatorForZones(client, zoneIds, dateValue);
-      }
+      const selectedOperator = await findBestAvailableOperator(client, dateValue);
       if (!selectedOperator) {
         stats.unassignedTasks += 1;
         continue;

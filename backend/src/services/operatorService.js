@@ -11,9 +11,6 @@ const OPERATOR_SELECT_SQL = `SELECT
   o.name,
   o.role,
   o.status,
-  o.shift_start AS "shiftStart",
-  o.shift_end AS "shiftEnd",
-  o.performance_score AS "performanceScore",
   o.created_at AS "createdAt",
   o.updated_at AS "updatedAt"
 FROM operators o`;
@@ -117,9 +114,6 @@ const updateOperatorStatus = async (operatorId, status) => {
          o.name,
          o.role,
          o.status,
-         o.shift_start AS "shiftStart",
-         o.shift_end AS "shiftEnd",
-         o.performance_score AS "performanceScore",
          o.created_at AS "createdAt",
          o.updated_at AS "updatedAt",
          c.status AS "previousStatus"

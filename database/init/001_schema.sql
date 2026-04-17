@@ -134,25 +134,15 @@ CREATE TABLE IF NOT EXISTS movements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Operators & zones ───────────────────────────────────────────────
+-- ── Operators ───────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS operators (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   role TEXT NOT NULL,
   status operator_status NOT NULL DEFAULT 'offline',
-  shift_start TIME NOT NULL,
-  shift_end TIME NOT NULL,
-  performance_score DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (performance_score >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS operator_zones (
-  operator_id UUID NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
-  zone_id UUID NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (operator_id, zone_id)
 );
 
 -- ── Tasks ───────────────────────────────────────────────────────────
@@ -324,7 +314,6 @@ CREATE INDEX IF NOT EXISTS idx_movements_created_at ON movements(created_at DESC
 CREATE INDEX IF NOT EXISTS idx_locations_zone_id ON locations(zone_id);
 CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_operators_status ON operators(status);
-CREATE INDEX IF NOT EXISTS idx_operator_zones_zone_id ON operator_zones(zone_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_operator_id ON tasks(assigned_operator_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_zone_id ON tasks(zone_id);

@@ -1,7 +1,5 @@
 const { pool } = require("../db");
 const {
-  calculateShiftDurationSeconds,
-  calculateUtilizationPercent,
   parseAggregationDate,
   toLocalIsoDate
 } = require("./laborMetricsAggregationUtils");
@@ -89,19 +87,13 @@ const buildUpsertRows = (operatorRows, metricsByOperator, effectiveDate) =>
         totalActiveTimeSeconds: 0
       };
 
-    const shiftDurationSeconds = calculateShiftDurationSeconds(operator.shift_start, operator.shift_end);
-    const utilizationPercent = calculateUtilizationPercent(
-      metricValues.totalActiveTimeSeconds,
-      shiftDurationSeconds
-    );
-
     return {
       operatorId: operator.id,
       date: effectiveDate,
       tasksCompleted: metricValues.tasksCompleted,
       unitsProcessed: metricValues.unitsProcessed,
       avgTaskTime: metricValues.avgTaskTime,
-      utilizationPercent
+      utilizationPercent: 0
     };
   });
 
@@ -140,12 +132,7 @@ const aggregateLaborDailyMetrics = async ({ date } = {}) => {
     inTransaction = true;
 
     const operatorResult = await client.query(
-      `SELECT
-        o.id,
-        o.shift_start::text AS shift_start,
-        o.shift_end::text AS shift_end
-      FROM operators o
-      ORDER BY o.id ASC`
+      `SELECT o.id FROM operators o ORDER BY o.id ASC`
     );
 
     if (operatorResult.rowCount === 0) {
@@ -231,8 +218,6 @@ const aggregateLaborDailyMetrics = async ({ date } = {}) => {
 
 module.exports = {
   aggregateLaborDailyMetrics,
-  calculateShiftDurationSeconds,
-  calculateUtilizationPercent,
   parseAggregationDate,
   toLocalIsoDate
 };
