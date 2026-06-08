@@ -14,15 +14,12 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-lg">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-100 bg-white/90 backdrop-blur-md">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <a href="/" className="flex items-center gap-2.5">
+        <a href="/" className="flex items-center gap-2.5 cursor-pointer">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/Greenlights_icon.png"
-            alt="Greenlights"
-            className="h-8 w-auto"
-          />
+          <img src="/Greenlights_icon.png" alt="Greenlights" className="h-7 w-auto" />
+          <span className="text-sm font-bold tracking-tight text-slate-900">Greenlights</span>
         </a>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -30,14 +27,14 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-gray-600 transition hover:text-gray-900"
+              className="cursor-pointer text-sm font-medium text-slate-500 transition-colors duration-200 hover:text-slate-900"
             >
               {link.label}
             </a>
           ))}
           <a
             href="#demo"
-            className="rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+            className="cursor-pointer rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-brand-700"
           >
             Request Demo
           </a>
@@ -45,7 +42,7 @@ export function Navbar() {
 
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 md:hidden"
+          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition-colors duration-200 hover:bg-slate-100 md:hidden"
           aria-label="Toggle menu"
         >
           {mobileOpen ? (
@@ -61,14 +58,14 @@ export function Navbar() {
       </nav>
 
       {mobileOpen && (
-        <div className="border-t border-gray-100 bg-white px-6 py-4 md:hidden">
+        <div className="border-t border-slate-100 bg-white px-6 py-4 md:hidden">
           <div className="flex flex-col gap-4">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
-                className="text-sm font-medium text-gray-600"
+                className="cursor-pointer text-sm font-medium text-slate-600"
               >
                 {link.label}
               </a>
@@ -76,7 +73,7 @@ export function Navbar() {
             <a
               href="#demo"
               onClick={() => setMobileOpen(false)}
-              className="rounded-lg bg-brand-600 px-5 py-2.5 text-center text-sm font-semibold text-white"
+              className="cursor-pointer rounded-lg bg-brand-600 px-5 py-2.5 text-center text-sm font-semibold text-white"
             >
               Request Demo
             </a>

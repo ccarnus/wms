@@ -45,16 +45,16 @@ const BENEFITS = [
 
 export function Benefits() {
   return (
-    <section id="benefits" className="py-24 sm:py-32">
+    <section id="benefits" className="bg-slate-900 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">
+          <p className="text-sm font-semibold uppercase tracking-widest text-brand-400">
             Benefits
           </p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             Built for the warehouse floor
           </h2>
-          <p className="mt-4 text-lg text-gray-600">
+          <p className="mt-4 text-lg text-slate-400">
             Every feature is designed to reduce friction, increase throughput,
             and give operations leaders the visibility they need.
           </p>
@@ -64,20 +64,20 @@ export function Benefits() {
           {BENEFITS.map((benefit) => (
             <div
               key={benefit.title}
-              className="flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
+              className="flex flex-col rounded-2xl border border-slate-700 bg-slate-800 p-6"
             >
               <div className="mb-4">
-                <span className="text-3xl font-extrabold text-brand-600">
+                <span className="text-3xl font-extrabold text-brand-400">
                   {benefit.metric}
                 </span>
-                <span className="ml-2 text-sm font-medium text-gray-400">
+                <span className="ml-2 text-xs font-medium text-slate-500">
                   {benefit.metricLabel}
                 </span>
               </div>
-              <h3 className="text-base font-bold text-gray-900">
+              <h3 className="text-sm font-bold text-white">
                 {benefit.title}
               </h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600">
+              <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-400">
                 {benefit.description}
               </p>
             </div>

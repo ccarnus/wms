@@ -55,7 +55,7 @@ docker compose up --build
 
 ```bash
 docker compose exec backend npm run seed:users
-# Creates admin / admin123
+# Creates admin / admin123 / exotec
 ```
 
 ## Available API Endpoints
