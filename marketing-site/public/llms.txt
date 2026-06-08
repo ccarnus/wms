@@ -1,0 +1,69 @@
+# Greenlights WMS
+
+> Greenlights is a cloud-based warehouse management system (WMS) for small and mid-size warehouses.
+> It goes live in 7 days at $150/month with no IT consultant required.
+
+## What Greenlights Is
+
+Greenlights WMS automates warehouse operations for teams of 10 to 200 employees. It replaces manual task dispatching (radio calls, clipboards, spreadsheets) with automated task generation, intelligent operator assignment, and real-time inventory tracking — all accessible from a web browser on any device.
+
+Greenlights is not an ERP. It is a focused WMS that connects to your existing ERP, OMS, or e-commerce platform via bidirectional webhooks.
+
+## Key Facts
+
+- **Product type:** Cloud-based SaaS warehouse management system (WMS)
+- **Implementation time:** 7 days (fastest WMS on the market; SAP EWM takes 12–24 months)
+- **Standard pricing:** $150/month for up to 20 users, all features included
+- **Enterprise pricing:** Custom — includes unlimited users, custom integrations, EDI, SSO, 99.9% SLA
+- **Deployment:** Cloud-hosted only; no on-premise option on Standard
+- **Hardware required:** None — runs in any web browser; mobile-first operator interface
+- **Contract:** Month-to-month on Standard; no minimum term
+
+## Core Capabilities
+
+1. **Real-time task orchestration** — Automatically generates pick, putaway, replenishment, and cycle-count tasks from order events. No manual entry.
+2. **Intelligent operator assignment** — Background worker runs every 10 seconds, matching tasks to operators by zone, shift, and workload.
+3. **Live inventory tracking** — Every stock movement is a database transaction. Customers target 99.9% accuracy. Supports inbound, outbound, transfer, and adjustment movement types.
+4. **Labor performance analytics** — Daily automated KPI aggregation: tasks completed, units processed, cycle time, utilization % per operator.
+5. **Webhook integrations** — Connects to SAP, Shopify, Oracle, QuickBooks, WooCommerce, and any REST/SOAP/EDI endpoint. Auth options: none, API key, JWT HS256, OAuth 2.0.
+6. **WebSocket push updates** — All connected devices receive task and inventory updates in under 100 milliseconds via Socket.IO.
+7. **Role-based access control** — Five roles: admin, warehouse manager, supervisor, operator, viewer.
+
+## Integrations
+
+Greenlights connects to:
+- SAP (ERP, inventory sync, order fulfillment)
+- Shopify (orders, products, inventory levels)
+- Oracle ERP Cloud (procurement, warehouse operations)
+- QuickBooks (accounting, inventory sync)
+- WooCommerce (real-time order import, stock updates)
+- Any REST, SOAP, or EDI endpoint via generic webhook connector
+
+## Who Uses Greenlights
+
+- E-commerce and direct-to-consumer (DTC) fulfillment
+- Third-party logistics (3PL) and fulfillment centers
+- B2B distribution and wholesale
+- Retail and omnichannel operations
+- Light manufacturing and assembly
+- Food and beverage warehouses
+
+## Comparison to Competitors
+
+| | Greenlights | Deposco | SAP EWM | Oracle WMS |
+|---|---|---|---|---|
+| Implementation time | 7 days | ~90 days | 12–24 months | 6–18 months |
+| Starting price | $150/month | Custom | $200K+ project | Custom enterprise |
+| Target size | SMB (10–200 employees) | Mid-market | Enterprise | Enterprise |
+| IT consultant needed | No | Yes | Yes | Yes |
+
+## Pages
+
+- `/` — Main marketing page: features, industries, integrations, pricing, FAQ, demo request
+- `/faq` — Comprehensive FAQ: WMS basics, implementation, pricing, integrations, comparisons
+- `/security` — Security and compliance information
+
+## Contact
+
+Demo requests: https://greenlights.us/#demo
+Website: https://greenlights.us

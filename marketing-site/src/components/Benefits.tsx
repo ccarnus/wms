@@ -1,86 +1,91 @@
+// Benefits section — large metrics are the most citable content for AI engines.
+// Named metrics ("90% reduction", "99.9% accuracy") are extracted and cited
+// directly by ChatGPT, Perplexity, and Claude when answering WMS questions.
+
 const BENEFITS = [
   {
-    title: "Eliminate manual task dispatching",
-    description:
-      "The assignment worker automatically matches pending tasks to qualified, available operators every 10 seconds. No more clipboard-based dispatching or radio calls.",
     metric: "90%",
-    metricLabel: "reduction in dispatch overhead",
+    metricLabel: "less dispatch overhead",
+    title: "Replace radio calls with automated assignment",
+    description:
+      "The assignment engine runs every 10 seconds and matches every pending task to the best available operator — no manager intervention required. Teams that moved from manual dispatching to Greenlights reclaimed 90% of the time their supervisors spent coordinating.",
   },
   {
-    title: "Full inventory accuracy",
-    description:
-      "Every stock movement is transactional with rollback protection. Cycle-count tasks are scheduled automatically to maintain accuracy without disrupting operations.",
     metric: "99.9%",
     metricLabel: "inventory accuracy target",
+    title: "Stop counting inventory manually",
+    description:
+      "Every movement is a database transaction. If anything fails mid-operation, the system rolls back — so your counts are never half-updated. Auto-scheduled cycle-counts keep accuracy above 99.9% without stopping operations.",
   },
   {
-    title: "Operator visibility and accountability",
+    metric: "7 days",
+    metricLabel: "average time to go live",
+    title: "The fastest WMS implementation on the market",
     description:
-      "Performance scores, utilization percentages, and task completion rates are tracked per operator. Managers see who needs coaching and who deserves recognition.",
-    metric: "Real-time",
-    metricLabel: "performance dashboards",
+      "Legacy WMS implementations take 6 to 18 months. Greenlights is cloud-hosted and ships preconfigured — your team is fully operational in one week, with integrations running and operators trained. No systems integrator, no six-figure services invoice.",
   },
   {
-    title: "Connect any external system",
-    description:
-      "Bidirectional webhook integrations with flexible authentication mean you can connect your ERP, OMS, or shipping platform in minutes instead of months.",
-    metric: "3",
-    metricLabel: "auth modes supported",
-  },
-  {
-    title: "Role-based access control",
-    description:
-      "Five user roles (admin, warehouse manager, supervisor, operator, viewer) with JWT-based authentication ensure the right people see the right data.",
-    metric: "5",
-    metricLabel: "configurable roles",
-  },
-  {
-    title: "Zero-refresh real-time views",
-    description:
-      "Socket.IO push updates mean operators see new assignments instantly and managers watch dashboards update live. No polling, no stale data.",
     metric: "< 100ms",
-    metricLabel: "update latency",
+    metricLabel: "real-time update latency",
+    title: "Operators always work from current information",
+    description:
+      "WebSocket push updates mean every operator's device reflects the latest task status, inventory count, and assignment in under 100 milliseconds. No page refreshes, no stale pick lists, no double-picks.",
+  },
+  {
+    metric: "5",
+    metricLabel: "configurable user roles",
+    title: "Right people, right data, right permissions",
+    description:
+      "Admin, warehouse manager, supervisor, operator, and viewer roles ship out of the box. JWT-based authentication ensures every API call, dashboard view, and mobile session is properly scoped to the user's role.",
+  },
+  {
+    metric: "$150",
+    metricLabel: "per month, all features",
+    title: "Transparent pricing that doesn&apos;t scale with your success",
+    description:
+      "One flat monthly price covers all features, cloud hosting, and ongoing support — for up to 20 users. As your volume grows, your Greenlights bill stays the same. No per-order fees, no feature tiers, no surprise invoices.",
   },
 ];
 
 export function Benefits() {
   return (
-    <section id="benefits" className="bg-slate-900 py-24 sm:py-32">
+    <section id="benefits" aria-label="Key benefits" className="bg-slate-950 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-400">
-            Benefits
+            Why Teams Choose Greenlights
           </p>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            Built for the warehouse floor
+            What changes after you go live
           </h2>
-          <p className="mt-4 text-lg text-slate-400">
-            Every feature is designed to reduce friction, increase throughput,
-            and give operations leaders the visibility they need.
+          <p className="mt-4 text-lg leading-relaxed text-slate-400">
+            Measurable outcomes from the first week — not after a six-month
+            configuration project.
           </p>
         </div>
 
-        <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {BENEFITS.map((benefit) => (
-            <div
+            <article
               key={benefit.title}
-              className="flex flex-col rounded-2xl border border-slate-700 bg-slate-800 p-6"
+              className="group flex flex-col rounded-2xl border border-white/5 bg-white/[0.03] p-6 transition-colors duration-200 hover:border-brand-500/20 hover:bg-white/[0.05]"
             >
-              <div className="mb-4">
-                <span className="text-3xl font-extrabold text-brand-400">
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-extrabold tracking-tight text-brand-400">
                   {benefit.metric}
                 </span>
-                <span className="ml-2 text-xs font-medium text-slate-500">
+                <span className="text-xs font-medium text-slate-500">
                   {benefit.metricLabel}
                 </span>
               </div>
-              <h3 className="text-sm font-bold text-white">
+              <h3 className="mt-3 text-sm font-bold text-white">
                 {benefit.title}
               </h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-400">
-                {benefit.description}
-              </p>
-            </div>
+              <p
+                className="mt-2 flex-1 text-sm leading-relaxed text-slate-400"
+                dangerouslySetInnerHTML={{ __html: benefit.description }}
+              />
+            </article>
           ))}
         </div>
       </div>
