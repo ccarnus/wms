@@ -145,5 +145,5 @@ vite.config.ts.timestamp-*
 aws/*
 
 #marketing site
-marketing-site/*
-marketing-site
+#marketing-site/*
+#marketing-site
