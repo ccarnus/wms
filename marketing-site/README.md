@@ -20,14 +20,19 @@ Opens at [http://localhost:3000](http://localhost:3000) with hot reload.
 
 ## Production Build (Docker)
 
+> **Important:** all Docker commands below must be run from inside the `marketing-site/` directory (where the `Dockerfile` lives), **not** from the repo root. The `-t` flag sets the local image name — it is not a `--target` build stage.
+
 Build and run the image locally to test before deploying:
 
 ```bash
+cd marketing-site          # must be here, not the repo root
 docker build -t greenlights-marketing .
 docker run -p 3000:3000 greenlights-marketing
 ```
 
 Opens at [http://localhost:3000](http://localhost:3000).
+
+> **Note:** the marketing site is **not** part of the main `docker-compose.yml`. Running `docker compose build greenlights-marketing` from the repo root will fail — use the plain `docker build` commands in this file instead.
 
 ## Deploy to AWS EC2
 
@@ -41,16 +46,12 @@ sudo systemctl enable docker
 sudo usermod -aG docker ubuntu   # log out and back in after this
 ```
 
-Clone the repository:
+Clone the repository and build the image (all in one block so the working directory is clear):
 
 ```bash
 git clone https://github.com/ccarnus/wms.git
-cd wms/marketing-site
-```
+cd wms/marketing-site           # <-- must be here before running docker build
 
-Build and start the container:
-
-```bash
 docker build -t greenlights-marketing .
 docker run -d \
   --name greenlights-marketing \
@@ -66,9 +67,10 @@ The app listens on port 3000. Nginx on the host proxies port 80 → 3000 (see Ng
 SSH into the instance, then:
 
 ```bash
-cd wms/marketing-site
+cd wms                          # repo root
 git pull
 
+cd marketing-site               # must be here before docker build
 docker build -t greenlights-marketing .
 
 docker stop greenlights-marketing && docker rm greenlights-marketing
