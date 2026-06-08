@@ -4,7 +4,7 @@ const FEATURES = [
     description:
       "Pick, putaway, replenish, and cycle-count tasks are automatically generated from order events and assigned to available operators. Optimistic locking ensures no conflicts in concurrent operations.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
       </svg>
     ),
@@ -20,7 +20,7 @@ const FEATURES = [
     description:
       "A background worker continuously matches available operators to pending tasks based on zone qualifications, shift schedules, and performance scores.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
@@ -38,12 +38,10 @@ const FEATURES = [
     description:
       "Track every product across every location in real time. Inbound, outbound, transfer, and adjustment movements are processed transactionally with full referential integrity.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <rect x="2" y="7" width="20" height="14" rx="2" />
         <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-        <path d="M12 12v4" />
-        <path d="M8 12v4" />
-        <path d="M16 12v4" />
+        <path d="M12 12v4M8 12v4M16 12v4" />
       </svg>
     ),
     details: [
@@ -58,7 +56,7 @@ const FEATURES = [
     description:
       "Daily KPI aggregation tracks tasks completed, units processed, average task time, and utilization percentage per operator. Manager dashboards surface trends and bottlenecks.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <path d="M18 20V10M12 20V4M6 20v-6" />
       </svg>
     ),
@@ -74,13 +72,11 @@ const FEATURES = [
     description:
       "Connect to any ERP, OMS, or third-party system using bidirectional webhooks. One integration per connector, with configurable authentication: none, API key credentials, or JWT bearer tokens.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <circle cx="12" cy="5" r="3" />
         <circle cx="19" cy="17" r="3" />
         <circle cx="5" cy="17" r="3" />
-        <path d="M12 8v4l3.5 6" />
-        <path d="M6.27 15.25L12 12" />
-        <path d="M16 17H8" />
+        <path d="M12 8v4l3.5 6M6.27 15.25L12 12M16 17H8" />
       </svg>
     ),
     details: [
@@ -95,7 +91,7 @@ const FEATURES = [
     description:
       "Socket.IO delivers instant updates to every connected client. Operators see new assignments immediately; managers watch task boards update live without refreshing.",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
       </svg>
     ),
@@ -108,89 +104,48 @@ const FEATURES = [
   },
 ];
 
+const CHECK_ICON = (
+  <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+  </svg>
+);
+
 export function Features() {
   return (
-    <section id="features" className="py-24 sm:py-32">
+    <section id="features" className="bg-slate-50 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">
             Capabilities
           </p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Everything you need to run a modern warehouse
           </h2>
-          <p className="mt-4 text-lg text-gray-600">
+          <p className="mt-4 text-lg text-slate-600">
             Built for growing businesses that need simple, reliable warehouse
             visibility without enterprise complexity.
           </p>
         </div>
 
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="overflow-hidden rounded-xl">
-            <img
-              src="/images/feature-fulfillment.jpg"
-              alt="Small fulfillment workspace with parcels ready to ship"
-              className="h-48 w-full object-cover"
-              loading="lazy"
-              width={600}
-              height={192}
-            />
-          </div>
-          <div className="overflow-hidden rounded-xl">
-            <img
-              src="/images/feature-stockroom.jpg"
-              alt="Neatly organized shelves in a small stockroom"
-              className="h-48 w-full object-cover"
-              loading="lazy"
-              width={600}
-              height={192}
-            />
-          </div>
-          <div className="overflow-hidden rounded-xl">
-            <img
-              src="/images/feature-team.jpg"
-              alt="Small team coordinating daily warehouse operations"
-              className="h-48 w-full object-cover"
-              loading="lazy"
-              width={600}
-              height={192}
-            />
-          </div>
-        </div>
-
-        <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((feature) => (
             <div
               key={feature.title}
-              className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:border-brand-200 hover:shadow-md"
+              className="group cursor-default rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition group-hover:bg-brand-100">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors duration-200 group-hover:border-brand-200 group-hover:bg-brand-50 group-hover:text-brand-600">
                 {feature.icon}
               </div>
-              <h3 className="mt-4 text-lg font-bold text-gray-900">
+              <h3 className="mt-4 text-base font-bold text-slate-900">
                 {feature.title}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
                 {feature.description}
               </p>
               <ul className="mt-4 space-y-2">
                 {feature.details.map((detail) => (
-                  <li
-                    key={detail}
-                    className="flex items-start gap-2 text-sm text-gray-500"
-                  >
-                    <svg
-                      className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-500"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                  <li key={detail} className="flex items-start gap-2 text-sm text-slate-500">
+                    {CHECK_ICON}
                     {detail}
                   </li>
                 ))}

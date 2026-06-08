@@ -35,47 +35,45 @@ const CONNECTORS = [
     name: "Generic Webhook",
     desc: "Connect any system via JSON webhooks with flexible authentication.",
     logo: null,
-    bgColor: "bg-gray-500",
+    bgColor: "bg-slate-500",
   },
 ];
 
 export function Connectors() {
   return (
-    <section id="connectors" className="bg-gray-50 py-24 sm:py-32">
+    <section id="connectors" className="bg-slate-50 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">
             Integrations
           </p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Connect to the tools you already use
           </h2>
-          <p className="mt-4 text-lg text-gray-600">
+          <p className="mt-4 text-lg text-slate-600">
             Greenlights integrates with leading ERPs, e-commerce platforms, and
             any custom system via webhooks. Set up in minutes, not months.
           </p>
         </div>
 
-        <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {CONNECTORS.map((connector) => (
             <div
               key={connector.name}
-              className="flex items-start gap-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+              className="flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md cursor-default"
             >
-              <div
-                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${connector.bgColor}`}
-              >
+              <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${connector.bgColor}`}>
                 {connector.logo ? (
                   <img
                     src={connector.logo}
                     alt={connector.name}
-                    className="h-5 w-5 brightness-0 invert"
-                    width={20}
-                    height={20}
+                    className="h-4 w-4 brightness-0 invert"
+                    width={16}
+                    height={16}
                   />
                 ) : (
                   <svg
-                    className="h-5 w-5 text-white"
+                    className="h-4 w-4 text-white"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -89,23 +87,19 @@ export function Connectors() {
                 )}
               </div>
               <div>
-                <h3 className="text-sm font-bold text-gray-900">
-                  {connector.name}
-                </h3>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                  {connector.desc}
-                </p>
+                <h3 className="text-sm font-bold text-slate-900">{connector.name}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">{connector.desc}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mt-12 text-center">
-          <p className="text-sm text-gray-500">
+        <div className="mt-10 text-center">
+          <p className="text-sm text-slate-500">
             Don&apos;t see your system?{" "}
             <a
               href="#demo"
-              className="font-semibold text-brand-600 transition hover:text-brand-700"
+              className="cursor-pointer font-semibold text-brand-600 transition-colors duration-200 hover:text-brand-700"
             >
               Talk to us
             </a>{" "}
