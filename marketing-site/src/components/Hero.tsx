@@ -115,7 +115,6 @@ export function Hero() {
               className="h-auto w-full"
               width={1200}
               height={600}
-              priority
             />
           </div>
         </div>
