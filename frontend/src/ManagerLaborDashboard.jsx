@@ -1,81 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
+import { fetchJson, getSocketBaseUrl, toQueryString } from "./lib/api";
+import {
+  Badge,
+  ClearFiltersButton,
+  DataTable,
+  ErrorBanner,
+  FilterSelect,
+  PageHeader,
+  SearchInput,
+  Section,
+  StatCard,
+  toTitleCase
+} from "./components/ui";
 
-const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
-const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
-
-const operatorStatusClassNameMap = {
-  available: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  busy: "border-amber-200 bg-amber-50 text-amber-700",
-  offline: "border-slate-300 bg-slate-100 text-slate-700"
+const OPERATOR_STATUS_TONES = {
+  available: "green",
+  busy: "amber",
+  offline: "gray"
 };
 
-const PAGE_SIZE = 10;
-
-const getSocketBaseUrl = () => {
-  if (!apiBaseUrl) {
-    return undefined;
-  }
-
-  try {
-    const parsed = new URL(apiBaseUrl, window.location.origin);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch (_error) {
-    return undefined;
-  }
-};
-
-const getAuthHeaders = (jwtToken) => {
-  const headers = { "Content-Type": "application/json" };
-  if (jwtToken) {
-    headers.Authorization = `Bearer ${jwtToken}`;
-  }
-  return headers;
-};
-
-async function fetchJson(path, jwtToken = "", onAuthError = null) {
-  const response = await fetch(buildApiUrl(path), {
-    headers: getAuthHeaders(jwtToken)
-  });
-  if (!response.ok) {
-    if (response.status === 401 && onAuthError) {
-      onAuthError();
-    }
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Request failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-const toQueryString = (params) => {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && String(value) !== "") {
-      query.set(key, String(value));
-    }
-  }
-  return query.toString();
+const ZONE_TYPE_TONES = {
+  pick: "blue",
+  bulk: "amber",
+  dock: "purple",
+  staging: "cyan",
+  packing: "teal"
 };
 
 const formatSeconds = (value) => {
   const numericValue = Number(value || 0);
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return "0s";
-  }
-  if (numericValue < 60) {
-    return `${numericValue.toFixed(0)}s`;
-  }
-  const minutes = numericValue / 60;
-  return `${minutes.toFixed(1)}m`;
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return "0s";
+  if (numericValue < 60) return `${numericValue.toFixed(0)}s`;
+  return `${(numericValue / 60).toFixed(1)}m`;
 };
-
-const toTitleCase = (value) =>
-  String(value || "")
-    .split("_")
-    .filter(Boolean)
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(" ");
 
 const getPendingZoneTasks = (zone) =>
   Number(zone.createdTasks || 0) +
@@ -106,22 +64,20 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   const [pendingOrders, setPendingOrders] = useState([]);
   const [assigningTaskId, setAssigningTaskId] = useState(null);
   const [assignError, setAssignError] = useState("");
-  const [operatorPage, setOperatorPage] = useState(1);
-  const [taskPage, setTaskPage] = useState(1);
+
+  const [operatorFilters, setOperatorFilters] = useState({ search: "", status: "" });
+  const [taskFilters, setTaskFilters] = useState({ search: "", type: "" });
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setIsLoading(true);
-    }
-
+    if (!silent) setIsLoading(true);
     try {
       const [overviewResponse, operatorResponse, zoneResponse, pendingResponse, alertsResponse, pendingOrdersResponse] = await Promise.all([
-        fetchJson("/api/labor/overview", jwtToken, onAuthError),
-        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
-        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
-        fetchJson(`/api/tasks?${toQueryString({ status: "created", page: 1, limit: 200 })}`, jwtToken, onAuthError),
-        fetchJson(`/api/sales-orders/alerts?${toQueryString({ page: 1, limit: 200 })}`, jwtToken, onAuthError),
-        fetchJson(`/api/sales-orders?${toQueryString({ status: "pending_inventory", page: 1, limit: 200 })}`, jwtToken, onAuthError)
+        fetchJson("/api/labor/overview", { jwtToken, onAuthError }),
+        fetchJson(`/api/labor/operator-performance?${toQueryString({ page: 1, limit: 200 })}`, { jwtToken, onAuthError }),
+        fetchJson(`/api/labor/zone-workload?${toQueryString({ page: 1, limit: 200 })}`, { jwtToken, onAuthError }),
+        fetchJson(`/api/tasks?${toQueryString({ status: "created", page: 1, limit: 200 })}`, { jwtToken, onAuthError }),
+        fetchJson(`/api/sales-orders/alerts?${toQueryString({ page: 1, limit: 200 })}`, { jwtToken, onAuthError }),
+        fetchJson(`/api/sales-orders?${toQueryString({ status: "pending_inventory", page: 1, limit: 200 })}`, { jwtToken, onAuthError })
       ]);
 
       setOverview(overviewResponse || null);
@@ -150,18 +106,11 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
     setAssigningTaskId(taskId);
     setAssignError("");
     try {
-      await fetch(buildApiUrl(`/api/tasks/${taskId}/assign`), {
+      await fetchJson(`/api/tasks/${taskId}/assign`, {
+        jwtToken,
+        onAuthError,
         method: "POST",
-        headers: getAuthHeaders(jwtToken),
         body: JSON.stringify({ operatorId })
-      }).then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 && onAuthError) {
-            onAuthError();
-          }
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload.error || `Assignment failed: ${res.status}`);
-        }
       });
       await loadDashboardData({ silent: true });
     } catch (error) {
@@ -176,35 +125,22 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
   }, [loadDashboardData]);
 
   useEffect(() => {
-    if (!jwtToken) {
-      return () => {};
-    }
-
-    const socket = io(getSocketBaseUrl(), {
-      auth: { token: jwtToken }
-    });
-
-    const refreshFromSocketEvent = () => {
-      loadDashboardData({ silent: true });
-    };
-
+    if (!jwtToken) return () => {};
+    const socket = io(getSocketBaseUrl(), { auth: { token: jwtToken } });
+    const refreshFromSocketEvent = () => loadDashboardData({ silent: true });
     socket.on("connect_error", (error) => {
-      const msg = error.message || "Realtime connection failed";
-      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
-        if (onAuthError) onAuthError();
-      }
+      const msg = (error.message || "").toLowerCase();
+      if ((msg.includes("expired") || msg.includes("unauthorized")) && onAuthError) onAuthError();
     });
-
     socket.on("TASK_ASSIGNED", refreshFromSocketEvent);
     socket.on("TASK_UPDATED", refreshFromSocketEvent);
     socket.on("OPERATOR_STATUS_UPDATED", refreshFromSocketEvent);
     socket.on("SALES_ORDER_UPDATED", refreshFromSocketEvent);
     socket.on("INVENTORY_ALERT", refreshFromSocketEvent);
-
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, [loadDashboardData, jwtToken, onAuthError]);
+
+  /* ── KPIs ──────────────────────────────────────────────────── */
 
   const kpis = useMemo(() => {
     const activeTasks =
@@ -219,92 +155,154 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
       Number(overview?.pausedTasks || 0);
 
     return [
-      {
-        id: "activeTasks",
-        title: "Active Tasks",
-        value: activeTasks,
-        hint: "assigned + in progress + paused"
-      },
-      {
-        id: "tasksCompleted",
-        title: "Tasks Completed Today",
-        value: Number(overview?.tasksCompleted || 0),
-        hint: "from labor daily metrics"
-      },
-      {
-        id: "ordersPending",
-        title: "Orders Pending",
-        value: ordersPending,
-        hint: "derived from pending task states"
-      },
-      {
-        id: "averagePickTime",
-        title: "Average Pick Time",
-        value: formatSeconds(overview?.avgTaskTime),
-        hint: "today average task time"
-      }
+      { id: "activeTasks", label: "Active Tasks", value: activeTasks, hint: "assigned + in progress + paused" },
+      { id: "tasksCompleted", label: "Tasks Completed Today", value: Number(overview?.tasksCompleted || 0), hint: "from labor daily metrics", tone: "accent" },
+      { id: "ordersPending", label: "Orders Pending", value: ordersPending, hint: "derived from pending task states" },
+      { id: "averagePickTime", label: "Average Pick Time", value: formatSeconds(overview?.avgTaskTime), hint: "today average task time" }
     ];
   }, [overview]);
 
-  const maxZonePendingTasks = useMemo(() => {
-    return zoneRows.reduce((maxValue, zone) => {
-      return Math.max(maxValue, getPendingZoneTasks(zone));
-    }, 0);
-  }, [zoneRows]);
+  const maxZonePendingTasks = useMemo(
+    () => zoneRows.reduce((maxValue, zone) => Math.max(maxValue, getPendingZoneTasks(zone)), 0),
+    [zoneRows]
+  );
 
-  const operatorTotalPages = Math.max(1, Math.ceil(operatorRows.length / PAGE_SIZE));
-  const safeOperatorPage = Math.min(operatorPage, operatorTotalPages);
-  const paginatedOperators = operatorRows.slice((safeOperatorPage - 1) * PAGE_SIZE, safeOperatorPage * PAGE_SIZE);
+  /* ── Filtering ─────────────────────────────────────────────── */
 
-  const taskTotalPages = Math.max(1, Math.ceil(pendingTasks.length / PAGE_SIZE));
-  const safeTaskPage = Math.min(taskPage, taskTotalPages);
-  const paginatedTasks = pendingTasks.slice((safeTaskPage - 1) * PAGE_SIZE, safeTaskPage * PAGE_SIZE);
+  const filteredOperators = useMemo(() => {
+    const search = operatorFilters.search.trim().toLowerCase();
+    return operatorRows.filter((op) => {
+      if (operatorFilters.status && op.status !== operatorFilters.status) return false;
+      if (search && !(op.operatorName || "").toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }, [operatorRows, operatorFilters]);
+
+  const pendingTaskTypes = useMemo(
+    () => [...new Set(pendingTasks.map((t) => t.type))].sort(),
+    [pendingTasks]
+  );
+
+  const filteredPendingTasks = useMemo(() => {
+    const search = taskFilters.search.trim().toLowerCase();
+    return pendingTasks.filter((t) => {
+      if (taskFilters.type && t.type !== taskFilters.type) return false;
+      if (search && !(t.sourceDocumentId || "").toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }, [pendingTasks, taskFilters]);
+
+  /* ── Columns ───────────────────────────────────────────────── */
+
+  const operatorColumns = [
+    { key: "operatorName", label: "Name", render: (op) => <span className="font-semibold">{op.operatorName}</span> },
+    {
+      key: "status",
+      label: "Status",
+      render: (op) => <Badge tone={OPERATOR_STATUS_TONES[op.status]}>{toTitleCase(op.status)}</Badge>
+    },
+    {
+      key: "currentZoneName",
+      label: "Zone",
+      sortValue: (op) => (op.currentTaskStatus === "in_progress" ? op.currentZoneName || "" : ""),
+      render: (op) =>
+        op.currentTaskStatus === "in_progress" && op.currentZoneName ? (
+          <Badge tone="accent">{op.currentZoneName}</Badge>
+        ) : (
+          <span className="text-xs text-black/30">—</span>
+        )
+    },
+    {
+      key: "currentTaskType",
+      label: "Current Task",
+      sortValue: (op) => (op.currentTaskStatus === "in_progress" ? op.currentTaskType || "" : ""),
+      render: (op) =>
+        op.currentTaskStatus === "in_progress" ? toTitleCase(op.currentTaskType) : <span className="text-black/30">—</span>
+    }
+  ];
+
+  const taskColumns = [
+    { key: "type", label: "Type", render: (t) => <span className="font-semibold">{toTitleCase(t.type)}</span> },
+    {
+      key: "priority",
+      label: "Priority",
+      align: "center",
+      sortValue: (t) => Number(t.priority),
+      render: (t) => <Badge tone="gray">{t.priority}</Badge>
+    },
+    {
+      key: "zoneId",
+      label: "Zone",
+      sortValue: (t) => zoneNameMap[t.zoneId] || "",
+      render: (t) => zoneNameMap[t.zoneId] || (t.zoneId ? "—" : "Multiple")
+    },
+    { key: "sourceDocumentId", label: "Source", cellClassName: "text-xs text-black/60" },
+    {
+      key: "estimatedTimeSeconds",
+      label: "Est. Time",
+      align: "center",
+      sortValue: (t) => Number(t.estimatedTimeSeconds),
+      render: (t) => formatSeconds(t.estimatedTimeSeconds)
+    },
+    {
+      key: "assign",
+      label: "Assign",
+      sortable: false,
+      render: (t) => (
+        <select
+          className="rounded-lg border border-black/15 bg-canvas px-2 py-1 text-xs"
+          defaultValue=""
+          disabled={assigningTaskId === t.id}
+          onChange={(e) => {
+            if (e.target.value) {
+              handleAssignTask(t.id, e.target.value);
+              e.target.value = "";
+            }
+          }}
+        >
+          <option value="" disabled>
+            {assigningTaskId === t.id ? "Assigning..." : "Assign to..."}
+          </option>
+          {operatorRows.map((op) => (
+            <option key={op.operatorId} value={op.operatorId}>
+              {op.operatorName} ({toTitleCase(op.status)})
+            </option>
+          ))}
+        </select>
+      )
+    }
+  ];
+
+  const operatorsFiltered = operatorFilters.search || operatorFilters.status;
+  const tasksFiltered = taskFilters.search || taskFilters.type;
 
   return (
     <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-        <header className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Manager Console</p>
-          <div className="mt-2">
-            <h1 className="text-2xl font-black sm:text-3xl">Labor Dashboard</h1>
-          </div>
-        </header>
+        <PageHeader
+          eyebrow="Manager Console"
+          title="Labor Dashboard"
+          subtitle="Workforce status, task assignment, and zone workload"
+        />
 
-        {errorMessage && (
-          <section className="rounded-xl border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal">
-            {errorMessage}
-          </section>
-        )}
+        <ErrorBanner message={errorMessage} />
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {isLoading
-            ? Array.from({ length: 4 }).map((_, index) => (
-                <article
-                  key={`kpi-loading-${index}`}
-                  className="h-28 animate-pulse rounded-2xl border border-black/10 bg-white p-4"
-                />
-              ))
-            : kpis.map((kpi) => (
-                <article key={kpi.id} className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-black/60">{kpi.title}</p>
-                  <p className="mt-2 text-3xl font-black">{kpi.value}</p>
-                  <p className="mt-1 text-xs text-black/50">{kpi.hint}</p>
-                </article>
-              ))}
+          {kpis.map((kpi) => (
+            <StatCard key={kpi.id} loading={isLoading} label={kpi.label} value={kpi.value} hint={kpi.hint} tone={kpi.tone} />
+          ))}
         </section>
 
         {inventoryAlerts.length > 0 && (
-          <section className="rounded-2xl border border-signal/30 bg-signal/5 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-black text-signal">Inventory Alerts</h2>
-              <span className="rounded-full border border-signal/30 bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal">
-                {inventoryAlerts.length} shortage{inventoryAlerts.length !== 1 ? "s" : ""}
-              </span>
-            </div>
+          <Section
+            title={<span className="text-signal">Inventory Alerts</span>}
+            meta={<Badge tone="rose">{inventoryAlerts.length} shortage{inventoryAlerts.length !== 1 ? "s" : ""}</Badge>}
+            className="border-signal/30 bg-signal/5"
+          >
             <p className="mb-3 text-xs text-black/60">
               Orders held — insufficient pick inventory. Stock must be replenished before these orders can be released.
             </p>
-            <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {inventoryAlerts.map((alert) => (
                 <article key={alert.id} className="rounded-xl border border-signal/20 bg-white p-3">
                   <div className="flex items-start justify-between gap-2">
@@ -315,9 +313,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                         {alert.skuDescription ? ` — ${alert.skuDescription}` : ""}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full border border-signal/30 bg-signal/10 px-2 py-0.5 text-[10px] font-bold text-signal">
-                      SHORT
-                    </span>
+                    <Badge tone="rose">SHORT</Badge>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-lg bg-canvas p-1.5">
@@ -336,292 +332,92 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
                 </article>
               ))}
             </div>
-          </section>
+          </Section>
         )}
 
         {pendingOrders.length > 0 && inventoryAlerts.length === 0 && (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-black text-amber-700">Pending Orders</h2>
-              <span className="rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">
-                {pendingOrders.length}
-              </span>
-            </div>
-            <p className="text-xs text-black/60">
-              Orders waiting for inventory to become available.
-            </p>
-          </section>
+          <Section
+            title={<span className="text-amber-700">Pending Orders</span>}
+            meta={<Badge tone="amber">{pendingOrders.length}</Badge>}
+            className="border-amber-200 bg-amber-50/50"
+          >
+            <p className="text-xs text-black/60">Orders waiting for inventory to become available.</p>
+          </Section>
         )}
 
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Operator Grid</h2>
-            <p className="text-xs text-black/60">{operatorRows.length} operators</p>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`operator-loading-${index}`} className="h-16 animate-pulse rounded-xl bg-canvas" />
-              ))}
-            </div>
-          ) : (
+        <Section
+          title="Operator Grid"
+          meta={`${filteredOperators.length} of ${operatorRows.length} operators`}
+          toolbar={
             <>
-              <div className="space-y-2 md:hidden">
-                {paginatedOperators.map((operator) => {
-                  const statusClassName =
-                    operatorStatusClassNameMap[operator.status] ||
-                    "border-slate-300 bg-slate-100 text-slate-700";
-                  const isInProgress = operator.currentTaskStatus === "in_progress";
-                  return (
-                    <article key={operator.operatorId} className="rounded-xl border border-black/10 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold">{operator.operatorName}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClassName}`}>
-                          {toTitleCase(operator.status)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-black/60">
-                        Current task:{" "}
-                        {isInProgress
-                          ? toTitleCase(operator.currentTaskType)
-                          : "\u2014"}
-                      </p>
-                      <p className="mt-1 text-xs text-black/60">
-                        Zone: {isInProgress && operator.currentZoneName ? operator.currentZoneName : "\u2014"}
-                      </p>
-                    </article>
-                  );
-                })}
-              </div>
-
-              <div className="hidden overflow-auto md:block">
-                <table className="min-w-[640px] w-full text-left text-sm">
-                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                    <tr>
-                      <th className="px-2 py-2">Name</th>
-                      <th className="px-2 py-2">Status</th>
-                      <th className="px-2 py-2">Zone</th>
-                      <th className="px-2 py-2">Current Task</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedOperators.map((operator) => {
-                      const statusClassName =
-                        operatorStatusClassNameMap[operator.status] ||
-                        "border-slate-300 bg-slate-100 text-slate-700";
-                      const isInProgress = operator.currentTaskStatus === "in_progress";
-                      return (
-                        <tr key={operator.operatorId} className="border-b border-black/10">
-                          <td className="px-2 py-2 font-semibold">{operator.operatorName}</td>
-                          <td className="px-2 py-2">
-                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClassName}`}>
-                              {toTitleCase(operator.status)}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2">
-                            {isInProgress && operator.currentZoneName ? (
-                              <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
-                                {operator.currentZoneName}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-black/30">{"\u2014"}</span>
-                            )}
-                          </td>
-                          <td className="px-2 py-2">
-                            {isInProgress
-                              ? toTitleCase(operator.currentTaskType)
-                              : "\u2014"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {operatorTotalPages > 1 && (
-                <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
-                  <p className="text-xs text-black/50">
-                    Showing {(safeOperatorPage - 1) * PAGE_SIZE + 1}–{Math.min(safeOperatorPage * PAGE_SIZE, operatorRows.length)} of {operatorRows.length}
-                  </p>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      disabled={safeOperatorPage <= 1}
-                      onClick={() => setOperatorPage((p) => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </button>
-                    <span className="flex items-center px-2 text-xs text-black/60">
-                      {safeOperatorPage} / {operatorTotalPages}
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      disabled={safeOperatorPage >= operatorTotalPages}
-                      onClick={() => setOperatorPage((p) => Math.min(operatorTotalPages, p + 1))}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
+              <SearchInput
+                value={operatorFilters.search}
+                onChange={(search) => setOperatorFilters((f) => ({ ...f, search }))}
+                placeholder="Search operator…"
+                className="w-56"
+              />
+              <FilterSelect
+                value={operatorFilters.status}
+                onChange={(status) => setOperatorFilters((f) => ({ ...f, status }))}
+                options={Object.keys(OPERATOR_STATUS_TONES).map((s) => ({ value: s, label: toTitleCase(s) }))}
+                allLabel="All statuses"
+              />
+              <ClearFiltersButton
+                visible={Boolean(operatorsFiltered)}
+                onClear={() => setOperatorFilters({ search: "", status: "" })}
+              />
             </>
-          )}
-        </section>
+          }
+        >
+          <DataTable
+            columns={operatorColumns}
+            rows={filteredOperators}
+            rowKey={(op) => op.operatorId}
+            loading={isLoading}
+            emptyTitle={operatorRows.length === 0 ? "No operators yet" : "No operators match the current filters"}
+            initialSort={{ key: "operatorName", dir: "asc" }}
+            pageSize={10}
+            paginationLabel="operators"
+            minWidth="min-w-[640px]"
+          />
+        </Section>
 
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Pending Tasks</h2>
-            <p className="text-xs text-black/60">{pendingTasks.length} tasks</p>
-          </div>
-
-          {assignError && (
-            <div className="mb-3 rounded-lg border border-signal/30 bg-signal/10 px-3 py-2 text-xs text-signal">
-              {assignError}
-            </div>
-          )}
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={`pending-loading-${index}`} className="h-12 animate-pulse rounded-xl bg-canvas" />
-              ))}
-            </div>
-          ) : pendingTasks.length === 0 ? (
-            <p className="py-6 text-center text-sm text-black/40">No pending tasks</p>
-          ) : (
+        <Section
+          title="Pending Tasks"
+          meta={`${filteredPendingTasks.length} of ${pendingTasks.length} tasks`}
+          toolbar={
             <>
-              <div className="space-y-2 md:hidden">
-                {paginatedTasks.map((task) => (
-                  <article key={task.id} className="rounded-xl border border-black/10 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">{toTitleCase(task.type)}</p>
-                      <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-[10px] font-semibold">
-                        P{task.priority}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-black/60">
-                      Zone: {zoneNameMap[task.zoneId] || (task.zoneId ? "\u2014" : "Multiple")} &middot; {task.sourceDocumentId}
-                    </p>
-                    <div className="mt-2">
-                      <select
-                        className="w-full rounded-lg border border-black/15 bg-canvas px-2 py-1.5 text-xs"
-                        defaultValue=""
-                        disabled={assigningTaskId === task.id}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleAssignTask(task.id, e.target.value);
-                            e.target.value = "";
-                          }
-                        }}
-                      >
-                        <option value="" disabled>
-                          {assigningTaskId === task.id ? "Assigning..." : "Assign to..."}
-                        </option>
-                        {operatorRows.map((op) => (
-                          <option key={op.operatorId} value={op.operatorId}>
-                            {op.operatorName} ({toTitleCase(op.status)})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </article>
-                ))}
-              </div>
-
-              <div className="hidden overflow-auto md:block">
-                <table className="min-w-[700px] w-full text-left text-sm">
-                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                    <tr>
-                      <th className="px-2 py-2">Type</th>
-                      <th className="px-2 py-2">Priority</th>
-                      <th className="px-2 py-2">Zone</th>
-                      <th className="px-2 py-2">Source</th>
-                      <th className="px-2 py-2">Est. Time</th>
-                      <th className="px-2 py-2">Assign</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedTasks.map((task) => (
-                      <tr key={task.id} className="border-b border-black/10">
-                        <td className="px-2 py-2 font-semibold">{toTitleCase(task.type)}</td>
-                        <td className="px-2 py-2">
-                          <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
-                            {task.priority}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2">{zoneNameMap[task.zoneId] || (task.zoneId ? "\u2014" : "Multiple")}</td>
-                        <td className="px-2 py-2 text-xs text-black/60">{task.sourceDocumentId}</td>
-                        <td className="px-2 py-2 text-xs">{formatSeconds(task.estimatedTimeSeconds)}</td>
-                        <td className="px-2 py-2">
-                          <select
-                            className="rounded-lg border border-black/15 bg-canvas px-2 py-1 text-xs"
-                            defaultValue=""
-                            disabled={assigningTaskId === task.id}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                handleAssignTask(task.id, e.target.value);
-                                e.target.value = "";
-                              }
-                            }}
-                          >
-                            <option value="" disabled>
-                              {assigningTaskId === task.id ? "Assigning..." : "Assign to..."}
-                            </option>
-                            {operatorRows.map((op) => (
-                              <option key={op.operatorId} value={op.operatorId}>
-                                {op.operatorName} ({toTitleCase(op.status)})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {taskTotalPages > 1 && (
-                <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
-                  <p className="text-xs text-black/50">
-                    Showing {(safeTaskPage - 1) * PAGE_SIZE + 1}–{Math.min(safeTaskPage * PAGE_SIZE, pendingTasks.length)} of {pendingTasks.length}
-                  </p>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      disabled={safeTaskPage <= 1}
-                      onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </button>
-                    <span className="flex items-center px-2 text-xs text-black/60">
-                      {safeTaskPage} / {taskTotalPages}
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      disabled={safeTaskPage >= taskTotalPages}
-                      onClick={() => setTaskPage((p) => Math.min(taskTotalPages, p + 1))}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
+              <SearchInput
+                value={taskFilters.search}
+                onChange={(search) => setTaskFilters((f) => ({ ...f, search }))}
+                placeholder="Search source document…"
+                className="w-56"
+              />
+              <FilterSelect
+                value={taskFilters.type}
+                onChange={(type) => setTaskFilters((f) => ({ ...f, type }))}
+                options={pendingTaskTypes.map((t) => ({ value: t, label: toTitleCase(t) }))}
+                allLabel="All types"
+              />
+              <ClearFiltersButton visible={Boolean(tasksFiltered)} onClear={() => setTaskFilters({ search: "", type: "" })} />
             </>
-          )}
-        </section>
+          }
+        >
+          {assignError && <div className="mb-3"><ErrorBanner message={assignError} /></div>}
+          <DataTable
+            columns={taskColumns}
+            rows={filteredPendingTasks}
+            rowKey={(t) => t.id}
+            loading={isLoading}
+            emptyTitle={pendingTasks.length === 0 ? "No pending tasks" : "No tasks match the current filters"}
+            initialSort={{ key: "priority", dir: "desc" }}
+            pageSize={10}
+            paginationLabel="tasks"
+            minWidth="min-w-[760px]"
+          />
+        </Section>
 
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Zones</h2>
-            <p className="text-xs text-black/60">{zoneRows.length} zones</p>
-          </div>
-
+        <Section title="Zones" meta={`${zoneRows.length} zones`}>
           {isLoading ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {Array.from({ length: 8 }).map((_, index) => (
@@ -631,32 +427,23 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {zoneRows.map((zone) => {
-                const pendingTasks = getPendingZoneTasks(zone);
-                const heatStyle = getHeatCellStyle(pendingTasks, maxZonePendingTasks);
-                const typeBadge = {
-                  pick: "border-blue-200 bg-blue-50 text-blue-700",
-                  bulk: "border-amber-200 bg-amber-50 text-amber-700",
-                  dock: "border-purple-200 bg-purple-50 text-purple-700",
-                  staging: "border-cyan-200 bg-cyan-50 text-cyan-700"
-                }[zone.zoneType] || "border-black/10 bg-canvas text-black/60";
-
+                const zonePendingTasks = getPendingZoneTasks(zone);
+                const heatStyle = getHeatCellStyle(zonePendingTasks, maxZonePendingTasks);
                 return (
                   <article
                     key={zone.zoneId}
                     className="flex flex-col justify-between rounded-xl border p-3"
                     style={heatStyle}
                   >
-                    <div>
-                      <div className="flex items-start justify-between gap-1">
-                        <p className="truncate text-sm font-bold leading-tight">{zone.zoneName}</p>
-                        <span className={`flex-shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${typeBadge}`}>
-                          {zone.zoneType}
-                        </span>
-                      </div>
+                    <div className="flex items-start justify-between gap-1">
+                      <p className="truncate text-sm font-bold leading-tight">{zone.zoneName}</p>
+                      <Badge tone={ZONE_TYPE_TONES[zone.zoneType]} className="!px-1.5 !text-[9px] uppercase">
+                        {zone.zoneType}
+                      </Badge>
                     </div>
                     <div className="mt-3 flex items-end justify-between">
                       <div>
-                        <p className="text-2xl font-black leading-none">{pendingTasks}</p>
+                        <p className="text-2xl font-black leading-none">{zonePendingTasks}</p>
                         <p className="mt-0.5 text-[10px] text-black/60">pending</p>
                       </div>
                       <div className="text-right text-[10px] text-black/50">
@@ -669,7 +456,7 @@ function ManagerLaborDashboard({ jwtToken, user, onAuthError }) {
               })}
             </div>
           )}
-        </section>
+        </Section>
       </div>
     </main>
   );

@@ -504,6 +504,7 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
   const [socketState, setSocketState] = useState("disconnected");
   const [showSettings, setShowSettings] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [typeFilter, setTypeFilter] = useState("");
 
   const socketRef = useRef(null);
   const selectedTaskRef = useRef(null);
@@ -651,9 +652,17 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
     loadAllTasks({ suppressLoading: true });
   }, [loadAllTasks]);
 
-  const inProgressTasks = tasks.filter((t) => t.status === "in_progress");
-  const pausedTasks = tasks.filter((t) => t.status === "paused");
-  const assignedTasks = tasks.filter((t) => t.status === "assigned");
+  const taskTypes = useMemo(() => [...new Set(tasks.map((t) => t.type))].sort(), [tasks]);
+
+  // Filter by type chip, then order by priority so the most urgent work is on top.
+  const visibleTasks = useMemo(() => {
+    const filtered = typeFilter ? tasks.filter((t) => t.type === typeFilter) : tasks;
+    return [...filtered].sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+  }, [tasks, typeFilter]);
+
+  const inProgressTasks = visibleTasks.filter((t) => t.status === "in_progress");
+  const pausedTasks = visibleTasks.filter((t) => t.status === "paused");
+  const assignedTasks = visibleTasks.filter((t) => t.status === "assigned");
 
   const selectedExpectedQuantity = useMemo(() => {
     if (!selectedTask || !Array.isArray(selectedTask.lines)) return 0;
@@ -714,6 +723,25 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
           <>
             <h1 className="text-xl font-black">My Tasks</h1>
 
+            {taskTypes.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {["", ...taskTypes].map((type) => (
+                  <button
+                    key={type || "all"}
+                    type="button"
+                    onClick={() => setTypeFilter(type)}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize transition ${
+                      typeFilter === type
+                        ? "border-accent bg-accent text-white"
+                        : "border-black/15 bg-white text-black/60"
+                    }`}
+                  >
+                    {type ? String(type).replace("_", " ") : "All"}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {isLoadingTasks ? (
               <div className="rounded-2xl border border-black/10 bg-white p-6 text-center">
                 <p className="text-sm text-black/60">Loading tasks...</p>
@@ -725,6 +753,12 @@ function OperatorTaskScreen({ jwtToken, user, onAuthError, onLogout }) {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
+                {visibleTasks.length === 0 && (
+                  <div className="rounded-2xl border border-black/10 bg-white p-6 text-center">
+                    <p className="text-sm text-black/60">No tasks of this type.</p>
+                  </div>
+                )}
+
                 {/* In Progress */}
                 {inProgressTasks.length > 0 && (
                   <TaskGroup label="In Progress" tasks={inProgressTasks} onSelect={handleSelectTask} accentColor="amber" />

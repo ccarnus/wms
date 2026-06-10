@@ -141,6 +141,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const [selectedId, setSelectedId] = useState(null);
   const [eventLog, setEventLog] = useState([]);
   const [eventLogLoading, setEventLogLoading] = useState(false);
+  const [eventLogStatusFilter, setEventLogStatusFilter] = useState("");
 
   const [testingId, setTestingId] = useState(null);
   const [testResult, setTestResult] = useState(null);
@@ -167,7 +168,7 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
   const loadEventLog = useCallback(async (integrationId) => {
     setEventLogLoading(true);
     try {
-      const result = await apiRequest("/api/integrations/" + integrationId + "/events?limit=20", jwtToken, {}, onAuthError);
+      const result = await apiRequest("/api/integrations/" + integrationId + "/events?limit=50", jwtToken, {}, onAuthError);
       setEventLog(result.items || []);
     } catch (_err) {
       setEventLog([]);
@@ -832,9 +833,21 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
           )}
 
           <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-bold">Event Log</h2>
-              <button type="button" className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold hover:bg-black/5" onClick={() => loadEventLog(selectedIntegration.id)}>Refresh</button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={eventLogStatusFilter}
+                  onChange={(e) => setEventLogStatusFilter(e.target.value)}
+                  className="rounded-lg border border-black/15 bg-white px-2 py-1.5 text-xs"
+                >
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="success">Success</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <button type="button" className="rounded-lg border border-black/15 bg-canvas px-3 py-1.5 text-xs font-semibold hover:bg-black/5" onClick={() => loadEventLog(selectedIntegration.id)}>Refresh</button>
+              </div>
             </div>
 
             {eventLogLoading ? (
@@ -845,9 +858,11 @@ function IntegrationsScreen({ jwtToken, user, onAuthError }) {
               </div>
             ) : eventLog.length === 0 ? (
               <p className="py-6 text-center text-sm text-black/40">No events yet</p>
+            ) : eventLog.filter((evt) => !eventLogStatusFilter || evt.status === eventLogStatusFilter).length === 0 ? (
+              <p className="py-6 text-center text-sm text-black/40">No events with this status</p>
             ) : (
               <div className="max-h-[500px] space-y-1.5 overflow-y-auto">
-                {eventLog.map((evt) => (
+                {eventLog.filter((evt) => !eventLogStatusFilter || evt.status === eventLogStatusFilter).map((evt) => (
                   <div key={evt.id} className="flex items-start gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs">
                     <span className={"mt-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold " + (STATUS_BADGES[evt.status] || "")}>{evt.status}</span>
                     <div className="min-w-0 flex-1">

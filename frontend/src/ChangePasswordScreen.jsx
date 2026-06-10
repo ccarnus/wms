@@ -1,9 +1,6 @@
 import React, { useState } from "react";
-
-const runtimeApiBaseUrl =
-  typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
-const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
+import { fetchJson } from "./lib/api";
+import { ErrorBanner } from "./components/ui";
 
 function ChangePasswordScreen({ jwtToken, onPasswordChanged }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -32,20 +29,11 @@ function ChangePasswordScreen({ jwtToken, onPasswordChanged }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(buildApiUrl("/api/auth/change-password"), {
+      const payload = await fetchJson("/api/auth/change-password", {
+        jwtToken,
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwtToken}`
-        },
         body: JSON.stringify({ currentPassword, newPassword })
       });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload.error || `Failed: ${response.status}`);
-      }
 
       onPasswordChanged(payload);
     } catch (error) {
@@ -56,10 +44,10 @@ function ChangePasswordScreen({ jwtToken, onPasswordChanged }) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-canvas via-white to-accent-50 px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
+        className="w-full max-w-sm rounded-2xl border border-black/10 bg-white p-6 shadow-lg"
       >
         <div className="rounded-xl border border-accent/20 bg-accent-50 p-5 text-center">
           <img src="/Greenlights_full_logo.png" alt="Greenlights" className="mx-auto h-14 w-auto" />
@@ -70,8 +58,8 @@ function ChangePasswordScreen({ jwtToken, onPasswordChanged }) {
         </div>
 
         {errorMessage && (
-          <div className="mt-4 rounded-xl border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal">
-            {errorMessage}
+          <div className="mt-4">
+            <ErrorBanner message={errorMessage} />
           </div>
         )}
 

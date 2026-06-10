@@ -1,18 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-
-const API_BASE = window.__API_BASE_URL__ || "";
+import { fetchJson } from "./lib/api";
+import {
+  Badge,
+  ClearFiltersButton,
+  DataTable,
+  ErrorBanner,
+  FilterSelect,
+  Modal,
+  PageHeader,
+  SearchInput,
+  Spinner,
+  primaryButtonClass,
+  secondaryButtonClass
+} from "./components/ui";
 
 const ZONE_TYPES = ["pick", "bulk", "dock", "staging", "packing"];
 const LOCATION_TYPES = ["rack", "shelf", "bin", "floor", "dock", "staging"];
 const LOCATION_STATUSES = ["active", "locked"];
 const WRITE_ROLES = ["admin", "warehouse_manager"];
 
-function getHeaders(token) {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-}
+const ZONE_TYPE_TONES = { pick: "blue", bulk: "purple", dock: "amber", staging: "gray", packing: "teal" };
+const LOCATION_TYPE_TONES = { rack: "blue", shelf: "purple", bin: "green", floor: "amber", dock: "gray", staging: "gray" };
 
 /* ── CSV helpers ──────────────────────────────────────────────────── */
 
@@ -109,41 +117,10 @@ function csvRowsToSkus(rows) {
   });
 }
 
-/* ── Small UI helpers ─────────────────────────────────────────────── */
-
-function Badge({ children, color }) {
-  const colors = {
-    green: "bg-emerald-100 text-emerald-700",
-    red: "bg-red-100 text-red-700",
-    blue: "bg-blue-100 text-blue-700",
-    gray: "bg-gray-100 text-gray-600",
-    amber: "bg-amber-100 text-amber-700",
-    purple: "bg-purple-100 text-purple-700",
-    teal: "bg-teal-100 text-teal-700",
-  };
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${colors[color] || colors.gray}`}>
-      {children}
-    </span>
-  );
-}
-
-function StatusBadge({ status }) {
-  return <Badge color={status === "active" ? "green" : "red"}>{status}</Badge>;
-}
+/* ── Small helpers ────────────────────────────────────────────────── */
 
 function ActiveBadge({ isActive }) {
-  return <Badge color={isActive ? "green" : "gray"}>{isActive ? "active" : "inactive"}</Badge>;
-}
-
-function ZoneTypeBadge({ type }) {
-  const colorMap = { pick: "blue", bulk: "purple", dock: "amber", staging: "gray", packing: "teal" };
-  return <Badge color={colorMap[type] || "gray"}>{type}</Badge>;
-}
-
-function LocTypeBadge({ type }) {
-  const colorMap = { rack: "blue", shelf: "purple", bin: "green", floor: "amber", dock: "gray", staging: "gray" };
-  return <Badge color={colorMap[type] || "gray"}>{type}</Badge>;
+  return <Badge tone={isActive ? "green" : "gray"}>{isActive ? "active" : "inactive"}</Badge>;
 }
 
 function UtilizationBar({ used, capacity }) {
@@ -154,34 +131,18 @@ function UtilizationBar({ used, capacity }) {
       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-200">
         <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-black/60">{used.toLocaleString()}/{capacity.toLocaleString()}</span>
+      <span className="whitespace-nowrap text-xs text-black/60">{used.toLocaleString()}/{capacity.toLocaleString()}</span>
     </div>
   );
 }
 
-const inputClass = "mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm";
-const filterInputClass = "rounded-lg border border-black/10 bg-white px-3 py-2 text-sm";
-
-function Modal({ title, onClose, children, wide }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className={`max-h-[90vh] w-full ${wide ? "max-w-2xl" : "max-w-lg"} overflow-y-auto rounded-2xl bg-white p-6 shadow-xl`}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
+const inputClass = "mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 function FormActions({ saving, onClose, submitLabel }) {
   return (
     <div className="flex justify-end gap-2 pt-2">
-      <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
-      <button type="submit" disabled={saving}
-        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50">
+      <button type="button" onClick={onClose} className={secondaryButtonClass}>Cancel</button>
+      <button type="submit" disabled={saving} className={primaryButtonClass}>
         {saving ? "Saving…" : submitLabel}
       </button>
     </div>
@@ -223,7 +184,7 @@ function WarehouseForm({ warehouse, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
           <span className="text-sm font-semibold text-gray-700">Code *</span>
@@ -294,7 +255,7 @@ function ZoneForm({ zone, warehouses, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
       {!zone && (
         <label className="block">
           <span className="text-sm font-semibold text-gray-700">Warehouse</span>
@@ -353,7 +314,7 @@ function LocationForm({ location, zones, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
       <label className="block">
         <span className="text-sm font-semibold text-gray-700">Zone</span>
         <select value={zoneId} onChange={(e) => setZoneId(e.target.value)} className={inputClass}>
@@ -450,10 +411,7 @@ function BulkLocationForm({ zones, onSave, onClose }) {
           {result.skipped > 0 ? ` — ${result.skipped} skipped (code already exists)` : ""}.
         </p>
         <div className="flex justify-end">
-          <button type="button" onClick={onClose}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">
-            Done
-          </button>
+          <button type="button" onClick={onClose} className={primaryButtonClass}>Done</button>
         </div>
       </div>
     );
@@ -461,7 +419,7 @@ function BulkLocationForm({ zones, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
       <label className="block">
         <span className="text-sm font-semibold text-gray-700">Zone</span>
         <select value={zoneId} onChange={(e) => setZoneId(e.target.value)} className={inputClass}>
@@ -570,7 +528,7 @@ function SkuForm({ skuData, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
@@ -714,10 +672,7 @@ function SkuImportForm({ onImport, onClose }) {
           </div>
         )}
         <div className="flex justify-end">
-          <button type="button" onClick={onClose}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">
-            Done
-          </button>
+          <button type="button" onClick={onClose} className={primaryButtonClass}>Done</button>
         </div>
       </div>
     );
@@ -725,7 +680,7 @@ function SkuImportForm({ onImport, onClose }) {
 
   return (
     <div className="space-y-4">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <ErrorBanner message={error} />}
       <p className="text-sm text-black/60">
         Upload a CSV with a header row. Required column: <span className="font-mono text-xs">sku</span>.
         Optional: <span className="font-mono text-xs">{SKU_CSV_COLUMNS.filter((c) => c !== "sku").join(", ")}</span>.
@@ -739,9 +694,9 @@ function SkuImportForm({ onImport, onClose }) {
         </p>
       )}
       <div className="flex justify-end gap-2 pt-2">
-        <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+        <button type="button" onClick={onClose} className={secondaryButtonClass}>Cancel</button>
         <button type="button" disabled={!parsedSkus || parsedSkus.length === 0 || saving} onClick={handleImport}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50">
+          className={primaryButtonClass}>
           {saving ? "Importing…" : "Import"}
         </button>
       </div>
@@ -769,17 +724,10 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
   // Modal state
   const [modal, setModal] = useState(null); // { type, mode: 'create'|'edit', data? }
 
-  const apiFetch = useCallback(async (path, options = {}) => {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: getHeaders(jwtToken),
-    });
-    if (res.status === 401) { onAuthError(); return null; }
-    if (res.status === 204) return null;
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Request failed");
-    return json;
-  }, [jwtToken, onAuthError]);
+  const apiFetch = useCallback(
+    (path, options = {}) => fetchJson(path, { jwtToken, onAuthError, ...options }),
+    [jwtToken, onAuthError]
+  );
 
   const loadData = useCallback(async () => {
     try {
@@ -896,59 +844,172 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
     });
   }, [skus, skuFilters]);
 
-  /* ── Render tab content ─────────────────────────────────────── */
+  /* ── Columns ───────────────────────────────────────────────── */
 
-  const primaryButton = "rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50";
-  const secondaryButton = "rounded-lg border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-canvas";
+  const editDeleteActions = (type, crud) => ({
+    key: "actions",
+    label: "Actions",
+    sortable: false,
+    align: "right",
+    render: (row) => (
+      <>
+        <button type="button" onClick={() => setModal({ type, mode: "edit", data: row })}
+          className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
+        <button type="button" onClick={() => crud.remove(row.id)}
+          className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
+      </>
+    )
+  });
+
+  const warehouseColumns = [
+    { key: "code", label: "Code", cellClassName: "font-mono text-xs font-semibold" },
+    { key: "name", label: "Name" },
+    {
+      key: "city",
+      label: "Location",
+      sortValue: (w) => [w.city, w.country].filter(Boolean).join(", "),
+      render: (w) => [w.city, w.country].filter(Boolean).join(", ") || <span className="text-black/30">—</span>
+    },
+    { key: "isActive", label: "Status", sortValue: (w) => Boolean(w.isActive), render: (w) => <ActiveBadge isActive={w.isActive} /> },
+    { key: "zoneCount", label: "Zones", align: "center", sortValue: (w) => Number(w.zoneCount) },
+    { key: "locationCount", label: "Locations", align: "center", sortValue: (w) => Number(w.locationCount) },
+    ...(canWrite ? [editDeleteActions("warehouse", warehouseCrud)] : [])
+  ];
+
+  const zoneColumns = [
+    { key: "name", label: "Name", cellClassName: "font-semibold" },
+    { key: "type", label: "Type", render: (z) => <Badge tone={ZONE_TYPE_TONES[z.type]}>{z.type}</Badge> },
+    { key: "warehouseCode", label: "Warehouse", cellClassName: "text-black/60" },
+    {
+      key: "description",
+      label: "Description",
+      cellClassName: "text-black/60",
+      render: (z) => z.description || <span className="text-black/30">—</span>
+    },
+    { key: "locationCount", label: "Locations", align: "center", sortValue: (z) => Number(z.locationCount) },
+    ...(canWrite ? [editDeleteActions("zone", zoneCrud)] : [])
+  ];
+
+  const locationColumns = [
+    {
+      key: "code",
+      label: "Code",
+      render: (loc) => (
+        <div>
+          <p className="font-mono text-xs font-semibold text-ink">{loc.code}</p>
+          <p className="text-xs text-black/40">{loc.name}</p>
+        </div>
+      )
+    },
+    { key: "zoneName", label: "Zone", cellClassName: "text-black/60" },
+    { key: "warehouseCode", label: "Warehouse", cellClassName: "text-black/60" },
+    { key: "type", label: "Type", render: (loc) => <Badge tone={LOCATION_TYPE_TONES[loc.type]}>{loc.type}</Badge> },
+    {
+      key: "status",
+      label: "Status",
+      render: (loc) => <Badge tone={loc.status === "active" ? "green" : "red"}>{loc.status}</Badge>
+    },
+    {
+      key: "usedCapacity",
+      label: "Utilization",
+      sortValue: (loc) => (loc.capacity > 0 ? (loc.usedCapacity || 0) / loc.capacity : 0),
+      render: (loc) => <UtilizationBar used={loc.usedCapacity || 0} capacity={loc.capacity} />
+    },
+    ...(canWrite ? [{
+      key: "actions",
+      label: "Actions",
+      sortable: false,
+      align: "right",
+      render: (loc) => (
+        <>
+          <button type="button" onClick={() => handleToggleLocationStatus(loc)}
+            className="mr-2 text-xs font-semibold text-amber-600 hover:underline">
+            {loc.status === "active" ? "Lock" : "Unlock"}
+          </button>
+          <button type="button" onClick={() => setModal({ type: "location", mode: "edit", data: loc })}
+            className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
+          <button type="button" onClick={() => locationCrud.remove(loc.id)}
+            className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
+        </>
+      )
+    }] : [])
+  ];
+
+  const skuColumns = [
+    { key: "sku", label: "SKU", cellClassName: "font-mono text-xs font-semibold" },
+    {
+      key: "description",
+      label: "Description",
+      cellClassName: "text-black/70",
+      render: (s) => s.description || <span className="text-black/30">—</span>
+    },
+    {
+      key: "category",
+      label: "Category",
+      cellClassName: "text-black/70",
+      render: (s) => s.category || <span className="text-black/30">—</span>
+    },
+    { key: "unitOfMeasure", label: "UOM", cellClassName: "text-black/70" },
+    {
+      key: "totalQuantity",
+      label: "Stock",
+      align: "center",
+      sortValue: (s) => Number(s.totalQuantity),
+      render: (s) => (
+        <span>
+          <span className="font-semibold">{s.totalQuantity.toLocaleString()}</span>
+          {s.lowStock && <span className="ml-1.5"><Badge tone="red">low</Badge></span>}
+        </span>
+      )
+    },
+    {
+      key: "minStockLevel",
+      label: "Min / Max",
+      align: "center",
+      sortValue: (s) => (s.minStockLevel == null ? null : Number(s.minStockLevel)),
+      render: (s) =>
+        s.minStockLevel != null || s.maxStockLevel != null
+          ? <span className="text-black/70">{s.minStockLevel ?? "—"} / {s.maxStockLevel ?? "—"}</span>
+          : <span className="text-black/30">—</span>
+    },
+    {
+      key: "barcodes",
+      label: "Barcodes",
+      sortValue: (s) => (Array.isArray(s.barcodes) ? s.barcodes.length : 0),
+      render: (s) => {
+        const count = Array.isArray(s.barcodes) ? s.barcodes.length : 0;
+        return count > 0 ? <Badge tone="blue">{count}</Badge> : <span className="text-black/30">—</span>;
+      }
+    },
+    { key: "isActive", label: "Status", sortValue: (s) => Boolean(s.isActive), render: (s) => <ActiveBadge isActive={s.isActive} /> },
+    ...(canWrite ? [editDeleteActions("sku", skuCrud)] : [])
+  ];
+
+  /* ── Tab content ───────────────────────────────────────────── */
+
+  const locsFiltered = locationFilters.search || locationFilters.warehouseId || locationFilters.zoneId || locationFilters.status;
+  const skusFiltered = skuFilters.search || skuFilters.category || skuFilters.active || skuFilters.lowOnly;
 
   const renderWarehousesTab = () => (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold text-ink">Warehouses</h2>
         {canWrite && (
-          <button type="button" onClick={() => setModal({ type: "warehouse", mode: "create" })} className={primaryButton}>
+          <button type="button" onClick={() => setModal({ type: "warehouse", mode: "create" })} className={primaryButtonClass}>
             + New Warehouse
           </button>
         )}
       </div>
-      <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-black/5 bg-canvas">
-              <th className="px-4 py-3 font-semibold text-black/60">Code</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Name</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Location</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Status</th>
-              <th className="px-4 py-3 text-center font-semibold text-black/60">Zones</th>
-              <th className="px-4 py-3 text-center font-semibold text-black/60">Locations</th>
-              {canWrite && <th className="px-4 py-3 text-right font-semibold text-black/60">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {warehouses.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-black/40">No warehouses yet. Create one to get started.</td></tr>
-            ) : warehouses.map((w) => (
-              <tr key={w.id} className="border-b border-black/5 last:border-0 hover:bg-canvas/50">
-                <td className="px-4 py-3 font-mono text-xs font-semibold text-ink">{w.code}</td>
-                <td className="px-4 py-3 text-ink">{w.name}</td>
-                <td className="px-4 py-3 text-black/60">
-                  {[w.city, w.country].filter(Boolean).join(", ") || <span className="text-black/30">—</span>}
-                </td>
-                <td className="px-4 py-3"><ActiveBadge isActive={w.isActive} /></td>
-                <td className="px-4 py-3 text-center">{w.zoneCount}</td>
-                <td className="px-4 py-3 text-center">{w.locationCount}</td>
-                {canWrite && (
-                  <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => setModal({ type: "warehouse", mode: "edit", data: w })}
-                      className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
-                    <button type="button" onClick={() => warehouseCrud.remove(w.id)}
-                      className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+        <DataTable
+          columns={warehouseColumns}
+          rows={warehouses}
+          rowKey={(w) => w.id}
+          emptyTitle="No warehouses yet"
+          emptyHint="Create one to get started."
+          initialSort={{ key: "code", dir: "asc" }}
+          minWidth="min-w-[760px]"
+        />
       </div>
     </div>
   );
@@ -959,7 +1020,7 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
         <h2 className="text-lg font-bold text-ink">Zones</h2>
         {canWrite && (
           <button type="button" onClick={() => setModal({ type: "zone", mode: "create" })}
-            disabled={warehouses.length === 0} className={primaryButton}>
+            disabled={warehouses.length === 0} className={primaryButtonClass}>
             + New Zone
           </button>
         )}
@@ -969,40 +1030,16 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
           You must create at least one warehouse before adding zones.
         </p>
       )}
-      <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-black/5 bg-canvas">
-              <th className="px-4 py-3 font-semibold text-black/60">Name</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Type</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Warehouse</th>
-              <th className="px-4 py-3 font-semibold text-black/60">Description</th>
-              <th className="px-4 py-3 text-center font-semibold text-black/60">Locations</th>
-              {canWrite && <th className="px-4 py-3 text-right font-semibold text-black/60">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {zones.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-black/40">No zones yet. Create one to get started.</td></tr>
-            ) : zones.map((z) => (
-              <tr key={z.id} className="border-b border-black/5 last:border-0 hover:bg-canvas/50">
-                <td className="px-4 py-3 font-semibold text-ink">{z.name}</td>
-                <td className="px-4 py-3"><ZoneTypeBadge type={z.type} /></td>
-                <td className="px-4 py-3 text-black/60">{z.warehouseCode}</td>
-                <td className="px-4 py-3 text-black/60">{z.description || <span className="text-black/30">—</span>}</td>
-                <td className="px-4 py-3 text-center">{z.locationCount}</td>
-                {canWrite && (
-                  <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => setModal({ type: "zone", mode: "edit", data: z })}
-                      className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
-                    <button type="button" onClick={() => zoneCrud.remove(z.id)}
-                      className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+        <DataTable
+          columns={zoneColumns}
+          rows={zones}
+          rowKey={(z) => z.id}
+          emptyTitle="No zones yet"
+          emptyHint="Create one to get started."
+          initialSort={{ key: "name", dir: "asc" }}
+          minWidth="min-w-[760px]"
+        />
       </div>
     </div>
   );
@@ -1014,11 +1051,11 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
         {canWrite && (
           <div className="flex gap-2">
             <button type="button" onClick={() => setModal({ type: "bulkLocations" })}
-              disabled={zones.length === 0} className={secondaryButton}>
+              disabled={zones.length === 0} className={secondaryButtonClass}>
               Bulk Generate
             </button>
             <button type="button" onClick={() => setModal({ type: "location", mode: "create" })}
-              disabled={zones.length === 0} className={primaryButton}>
+              disabled={zones.length === 0} className={primaryButtonClass}>
               + New Location
             </button>
           </div>
@@ -1030,80 +1067,51 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
         </p>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input value={locationFilters.search}
-          onChange={(e) => setLocationFilters((f) => ({ ...f, search: e.target.value }))}
-          className={`${filterInputClass} w-48`} placeholder="Search code or name…" />
-        <select value={locationFilters.warehouseId}
-          onChange={(e) => setLocationFilters((f) => ({ ...f, warehouseId: e.target.value, zoneId: "" }))}
-          className={filterInputClass}>
-          <option value="">All warehouses</option>
-          {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code}</option>)}
-        </select>
-        <select value={locationFilters.zoneId}
-          onChange={(e) => setLocationFilters((f) => ({ ...f, zoneId: e.target.value }))}
-          className={filterInputClass}>
-          <option value="">All zones</option>
-          {zones
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput
+          value={locationFilters.search}
+          onChange={(search) => setLocationFilters((f) => ({ ...f, search }))}
+          placeholder="Search code or name…"
+          className="w-56"
+        />
+        <FilterSelect
+          value={locationFilters.warehouseId}
+          onChange={(warehouseId) => setLocationFilters((f) => ({ ...f, warehouseId, zoneId: "" }))}
+          options={warehouses.map((w) => ({ value: String(w.id), label: w.code }))}
+          allLabel="All warehouses"
+        />
+        <FilterSelect
+          value={locationFilters.zoneId}
+          onChange={(zoneId) => setLocationFilters((f) => ({ ...f, zoneId }))}
+          options={zones
             .filter((z) => !locationFilters.warehouseId || String(z.warehouseId) === locationFilters.warehouseId)
-            .map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
-        </select>
-        <select value={locationFilters.status}
-          onChange={(e) => setLocationFilters((f) => ({ ...f, status: e.target.value }))}
-          className={filterInputClass}>
-          <option value="">All statuses</option>
-          {LOCATION_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+            .map((z) => ({ value: String(z.id), label: z.name }))}
+          allLabel="All zones"
+        />
+        <FilterSelect
+          value={locationFilters.status}
+          onChange={(status) => setLocationFilters((f) => ({ ...f, status }))}
+          options={LOCATION_STATUSES}
+          allLabel="All statuses"
+        />
+        <ClearFiltersButton
+          visible={Boolean(locsFiltered)}
+          onClear={() => setLocationFilters({ search: "", warehouseId: "", zoneId: "", status: "" })}
+        />
         <span className="self-center text-xs text-black/40">{filteredLocations.length} of {locations.length}</span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-        <div className="overflow-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-black/5 bg-canvas">
-                <th className="px-4 py-3 font-semibold text-black/60">Code</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Zone</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Warehouse</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Type</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Status</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Utilization</th>
-                {canWrite && <th className="px-4 py-3 text-right font-semibold text-black/60">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLocations.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-black/40">
-                  {locations.length === 0 ? "No locations yet." : "No locations match the current filters."}
-                </td></tr>
-              ) : filteredLocations.map((loc) => (
-                <tr key={loc.id} className="border-b border-black/5 last:border-0 hover:bg-canvas/50">
-                  <td className="px-4 py-3">
-                    <p className="font-mono text-xs font-semibold text-ink">{loc.code}</p>
-                    <p className="text-xs text-black/40">{loc.name}</p>
-                  </td>
-                  <td className="px-4 py-3 text-black/60">{loc.zoneName}</td>
-                  <td className="px-4 py-3 text-black/60">{loc.warehouseCode}</td>
-                  <td className="px-4 py-3"><LocTypeBadge type={loc.type} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={loc.status} /></td>
-                  <td className="px-4 py-3"><UtilizationBar used={loc.usedCapacity || 0} capacity={loc.capacity} /></td>
-                  {canWrite && (
-                    <td className="px-4 py-3 text-right">
-                      <button type="button" onClick={() => handleToggleLocationStatus(loc)}
-                        className="mr-2 text-xs font-semibold text-amber-600 hover:underline">
-                        {loc.status === "active" ? "Lock" : "Unlock"}
-                      </button>
-                      <button type="button" onClick={() => setModal({ type: "location", mode: "edit", data: loc })}
-                        className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
-                      <button type="button" onClick={() => locationCrud.remove(loc.id)}
-                        className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+        <DataTable
+          columns={locationColumns}
+          rows={filteredLocations}
+          rowKey={(loc) => loc.id}
+          emptyTitle={locations.length === 0 ? "No locations yet" : "No locations match the current filters"}
+          initialSort={{ key: "code", dir: "asc" }}
+          pageSize={15}
+          paginationLabel="locations"
+          minWidth="min-w-[900px]"
+        />
       </div>
     </div>
   );
@@ -1113,15 +1121,15 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-ink">SKUs</h2>
         <div className="flex gap-2">
-          <button type="button" onClick={handleExportSkus} disabled={skus.length === 0} className={secondaryButton}>
+          <button type="button" onClick={handleExportSkus} disabled={skus.length === 0} className={secondaryButtonClass}>
             Export CSV
           </button>
           {canWrite && (
             <>
-              <button type="button" onClick={() => setModal({ type: "skuImport" })} className={secondaryButton}>
+              <button type="button" onClick={() => setModal({ type: "skuImport" })} className={secondaryButtonClass}>
                 Import CSV
               </button>
-              <button type="button" onClick={() => setModal({ type: "sku", mode: "create" })} className={primaryButton}>
+              <button type="button" onClick={() => setModal({ type: "sku", mode: "create" })} className={primaryButtonClass}>
                 + New SKU
               </button>
             </>
@@ -1129,88 +1137,50 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input value={skuFilters.search}
-          onChange={(e) => setSkuFilters((f) => ({ ...f, search: e.target.value }))}
-          className={`${filterInputClass} w-48`} placeholder="Search SKU or description…" />
-        <select value={skuFilters.category}
-          onChange={(e) => setSkuFilters((f) => ({ ...f, category: e.target.value }))}
-          className={filterInputClass}>
-          <option value="">All categories</option>
-          {skuCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={skuFilters.active}
-          onChange={(e) => setSkuFilters((f) => ({ ...f, active: e.target.value }))}
-          className={filterInputClass}>
-          <option value="">All</option>
-          <option value="true">Active only</option>
-          <option value="false">Inactive only</option>
-        </select>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput
+          value={skuFilters.search}
+          onChange={(search) => setSkuFilters((f) => ({ ...f, search }))}
+          placeholder="Search SKU or description…"
+          className="w-56"
+        />
+        <FilterSelect
+          value={skuFilters.category}
+          onChange={(category) => setSkuFilters((f) => ({ ...f, category }))}
+          options={skuCategories}
+          allLabel="All categories"
+        />
+        <FilterSelect
+          value={skuFilters.active}
+          onChange={(active) => setSkuFilters((f) => ({ ...f, active }))}
+          options={[{ value: "true", label: "Active only" }, { value: "false", label: "Inactive only" }]}
+          allLabel="All"
+        />
         <label className="flex items-center gap-1.5 self-center text-sm text-black/70">
           <input type="checkbox" checked={skuFilters.lowOnly}
             onChange={(e) => setSkuFilters((f) => ({ ...f, lowOnly: e.target.checked }))}
             className="h-4 w-4 rounded border-gray-300" />
           Low stock only
         </label>
+        <ClearFiltersButton
+          visible={Boolean(skusFiltered)}
+          onClear={() => setSkuFilters({ search: "", category: "", active: "", lowOnly: false })}
+        />
         <span className="self-center text-xs text-black/40">{filteredSkus.length} of {skus.length}</span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-        <div className="overflow-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-black/5 bg-canvas">
-                <th className="px-4 py-3 font-semibold text-black/60">SKU</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Description</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Category</th>
-                <th className="px-4 py-3 font-semibold text-black/60">UOM</th>
-                <th className="px-4 py-3 text-center font-semibold text-black/60">Stock</th>
-                <th className="px-4 py-3 text-center font-semibold text-black/60">Min / Max</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Barcodes</th>
-                <th className="px-4 py-3 font-semibold text-black/60">Status</th>
-                {canWrite && <th className="px-4 py-3 text-right font-semibold text-black/60">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSkus.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-black/40">
-                  {skus.length === 0 ? "No SKUs yet. Create one to get started." : "No SKUs match the current filters."}
-                </td></tr>
-              ) : filteredSkus.map((s) => {
-                const barcodeCount = Array.isArray(s.barcodes) ? s.barcodes.length : 0;
-                return (
-                  <tr key={s.id} className="border-b border-black/5 last:border-0 hover:bg-canvas/50">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-ink">{s.sku}</td>
-                    <td className="px-4 py-3 text-black/70">{s.description || <span className="text-black/30">—</span>}</td>
-                    <td className="px-4 py-3 text-black/70">{s.category || <span className="text-black/30">—</span>}</td>
-                    <td className="px-4 py-3 text-black/70">{s.unitOfMeasure}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="font-semibold">{s.totalQuantity.toLocaleString()}</span>
-                      {s.lowStock && <span className="ml-1.5"><Badge color="red">low</Badge></span>}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black/70">
-                      {s.minStockLevel != null || s.maxStockLevel != null
-                        ? `${s.minStockLevel ?? "—"} / ${s.maxStockLevel ?? "—"}`
-                        : <span className="text-black/30">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {barcodeCount > 0 ? <Badge color="blue">{barcodeCount}</Badge> : <span className="text-black/30">—</span>}
-                    </td>
-                    <td className="px-4 py-3"><ActiveBadge isActive={s.isActive} /></td>
-                    {canWrite && (
-                      <td className="px-4 py-3 text-right">
-                        <button type="button" onClick={() => setModal({ type: "sku", mode: "edit", data: s })}
-                          className="mr-2 text-xs font-semibold text-accent hover:underline">Edit</button>
-                        <button type="button" onClick={() => skuCrud.remove(s.id)}
-                          className="text-xs font-semibold text-red-500 hover:underline">Delete</button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
+        <DataTable
+          columns={skuColumns}
+          rows={filteredSkus}
+          rowKey={(s) => s.id}
+          emptyTitle={skus.length === 0 ? "No SKUs yet" : "No SKUs match the current filters"}
+          emptyHint={skus.length === 0 ? "Create one or import a CSV to get started." : undefined}
+          initialSort={{ key: "sku", dir: "asc" }}
+          pageSize={15}
+          paginationLabel="SKUs"
+          minWidth="min-w-[1000px]"
+        />
       </div>
     </div>
   );
@@ -1219,11 +1189,14 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink">Configuration</h1>
-        <p className="mt-1 text-sm text-black/60">Manage warehouses, zones, locations, and the SKU catalog</p>
+        <PageHeader
+          eyebrow="Master Data"
+          title="Configuration"
+          subtitle="Manage warehouses, zones, locations, and the SKU catalog"
+        />
       </div>
 
-      {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <div className="mb-4"><ErrorBanner message={error} /></div>}
 
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-black/10 bg-white p-1">
@@ -1252,9 +1225,7 @@ export default function ConfigurationScreen({ jwtToken, user, onAuthError }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        </div>
+        <Spinner />
       ) : tab === "warehouses" ? renderWarehousesTab()
         : tab === "zones" ? renderZonesTab()
         : tab === "locations" ? renderLocationsTab()

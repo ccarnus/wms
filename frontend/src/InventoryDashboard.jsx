@@ -1,90 +1,35 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
+import { fetchJson, getSocketBaseUrl, toQueryString } from "./lib/api";
+import {
+  Badge,
+  ClearFiltersButton,
+  DataTable,
+  ErrorBanner,
+  FilterSelect,
+  PageHeader,
+  SearchInput,
+  Section,
+  StatCard,
+  formatDateTime,
+  formatNumber
+} from "./components/ui";
 
-const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
-const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
-
-const getSocketBaseUrl = () => {
-  if (!apiBaseUrl) {
-    return undefined;
-  }
-
-  try {
-    const parsed = new URL(apiBaseUrl, window.location.origin);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch (_error) {
-    return undefined;
-  }
+const MOVEMENT_TONES = {
+  INBOUND: "green",
+  OUTBOUND: "rose",
+  TRANSFER: "cyan",
+  ADJUSTMENT: "amber"
 };
 
-const movementTypeClassNameMap = {
-  INBOUND: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  OUTBOUND: "border-rose-200 bg-rose-50 text-rose-700",
-  TRANSFER: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  ADJUSTMENT: "border-amber-200 bg-amber-50 text-amber-700"
+const LOCATION_TYPE_TONES = {
+  rack: "blue",
+  shelf: "purple",
+  bin: "green",
+  floor: "amber",
+  dock: "gray",
+  staging: "gray"
 };
-
-const toQueryString = (params) => {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && String(value) !== "") {
-      query.set(key, String(value));
-    }
-  }
-  return query.toString();
-};
-
-async function patchJson(path, body, jwtToken = "", onAuthError = null) {
-  const headers = { "Content-Type": "application/json" };
-  if (jwtToken) {
-    headers.Authorization = `Bearer ${jwtToken}`;
-  }
-  const response = await fetch(buildApiUrl(path), {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    if (response.status === 401 && onAuthError) {
-      onAuthError();
-    }
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Request failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-const formatNumber = (value) => Number(value || 0).toLocaleString();
-
-const formatDateTime = (value) => {
-  if (!value) {
-    return "-";
-  }
-
-  const parsedDate = new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value);
-  }
-
-  return parsedDate.toLocaleString();
-};
-
-async function fetchJson(path, jwtToken = "", onAuthError = null) {
-  const headers = { "Content-Type": "application/json" };
-  if (jwtToken) {
-    headers.Authorization = `Bearer ${jwtToken}`;
-  }
-  const response = await fetch(buildApiUrl(path), { headers });
-  if (!response.ok) {
-    if (response.status === 401 && onAuthError) {
-      onAuthError();
-    }
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Request failed: ${response.status}`);
-  }
-  return response.json();
-}
 
 function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [isLoading, setIsLoading] = useState(true);
@@ -94,38 +39,24 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   const [inventoryRows, setInventoryRows] = useState([]);
   const [skuRows, setSkuRows] = useState([]);
   const [movementRows, setMovementRows] = useState([]);
-
   const [locationRows, setLocationRows] = useState([]);
-  const [locFilterWarehouse, setLocFilterWarehouse] = useState("");
-  const [locFilterZone, setLocFilterZone] = useState("");
-  const [locFilterStatus, setLocFilterStatus] = useState("");
-  const [locFilterType, setLocFilterType] = useState("");
-  const [locFilterSearch, setLocFilterSearch] = useState("");
   const [togglingId, setTogglingId] = useState(null);
 
   const [lowStockThreshold, setLowStockThreshold] = useState(20);
 
-  // Pagination state
-  const [locPage, setLocPage] = useState(1);
-  const [movPage, setMovPage] = useState(1);
-  const [skuPage, setSkuPage] = useState(1);
-
-  // SKU by Units filters
-  const [skuFilterSearch, setSkuFilterSearch] = useState("");
-  const [skuFilterWarehouse, setSkuFilterWarehouse] = useState("");
+  const [locFilters, setLocFilters] = useState({ search: "", warehouse: "", zone: "", status: "", type: "" });
+  const [skuFilters, setSkuFilters] = useState({ search: "", warehouse: "" });
+  const [movFilters, setMovFilters] = useState({ search: "", type: "" });
 
   const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setIsLoading(true);
-    }
-
+    if (!silent) setIsLoading(true);
     try {
       const [summaryResponse, inventoryResponse, skusResponse, movementsResponse, locationsResponse] = await Promise.all([
-        fetchJson("/api/summary", jwtToken, onAuthError),
-        fetchJson("/api/inventory", jwtToken, onAuthError),
-        fetchJson("/api/skus", jwtToken, onAuthError),
-        fetchJson(`/api/movements?${toQueryString({ limit: 100 })}`, jwtToken, onAuthError),
-        fetchJson("/api/locations", jwtToken, onAuthError)
+        fetchJson("/api/summary", { jwtToken, onAuthError }),
+        fetchJson("/api/inventory", { jwtToken, onAuthError }),
+        fetchJson("/api/skus", { jwtToken, onAuthError }),
+        fetchJson(`/api/movements?${toQueryString({ limit: 100 })}`, { jwtToken, onAuthError }),
+        fetchJson("/api/locations", { jwtToken, onAuthError })
       ]);
 
       setSummary(summaryResponse || null);
@@ -146,29 +77,17 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
   }, [loadDashboardData]);
 
   useEffect(() => {
-    if (!jwtToken) {
-      return () => {};
-    }
-
-    const socket = io(getSocketBaseUrl(), {
-      auth: { token: jwtToken }
-    });
-
+    if (!jwtToken) return () => {};
+    const socket = io(getSocketBaseUrl(), { auth: { token: jwtToken } });
     socket.on("connect_error", (error) => {
-      const msg = error.message || "Realtime connection failed";
-      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("unauthorized")) {
-        if (onAuthError) onAuthError();
-      }
+      const msg = (error.message || "").toLowerCase();
+      if ((msg.includes("expired") || msg.includes("unauthorized")) && onAuthError) onAuthError();
     });
-
-    socket.on("INVENTORY_UPDATED", () => {
-      loadDashboardData({ silent: true });
-    });
-
-    return () => {
-      socket.disconnect();
-    };
+    socket.on("INVENTORY_UPDATED", () => loadDashboardData({ silent: true }));
+    return () => socket.disconnect();
   }, [loadDashboardData, jwtToken, onAuthError]);
+
+  /* ── KPIs ──────────────────────────────────────────────────── */
 
   const kpis = useMemo(() => {
     const lowThreshold = Math.max(0, Number(lowStockThreshold) || 0);
@@ -181,48 +100,19 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
     const activeWarehouseCount = new Set(inventoryRows.map((row) => row.warehouseId)).size;
 
     return [
-      {
-        id: "totalUnits",
-        title: "Total Units",
-        value: formatNumber(summary?.totalUnits || 0),
-        hint: "sum of all on-hand inventory"
-      },
-      {
-        id: "skuCount",
-        title: "Total SKUs",
-        value: formatNumber(summary?.skuCount || skuRows.length),
-        hint: "catalog product count"
-      },
-      {
-        id: "outOfStock",
-        title: "Out of Stock SKUs",
-        value: formatNumber(outOfStockSkuCount),
-        hint: "products with 0 units"
-      },
-      {
-        id: "lowStock",
-        title: `Low Stock (<= ${lowThreshold})`,
-        value: formatNumber(lowStockSkuCount),
-        hint: "products below threshold"
-      },
-      {
-        id: "locationsWithStock",
-        title: "Locations with Stock",
-        value: formatNumber(activeLocationCount || summary?.locationCount),
-        hint: "locations currently holding units"
-      },
-      {
-        id: "warehousesWithStock",
-        title: "Warehouses",
-        value: formatNumber(activeWarehouseCount || summary?.warehouseCount),
-        hint: "warehouses with active inventory"
-      }
+      { id: "totalUnits", label: "Total Units", value: formatNumber(summary?.totalUnits || 0), hint: "sum of all on-hand inventory" },
+      { id: "skuCount", label: "Total SKUs", value: formatNumber(summary?.skuCount || skuRows.length), hint: "catalog product count" },
+      { id: "outOfStock", label: "Out of Stock SKUs", value: formatNumber(outOfStockSkuCount), hint: "products with 0 units", tone: outOfStockSkuCount > 0 ? "signal" : undefined },
+      { id: "lowStock", label: `Low Stock (≤ ${lowThreshold})`, value: formatNumber(lowStockSkuCount), hint: "products below threshold" },
+      { id: "locationsWithStock", label: "Locations with Stock", value: formatNumber(activeLocationCount || summary?.locationCount), hint: "locations currently holding units" },
+      { id: "warehousesWithStock", label: "Warehouses", value: formatNumber(activeWarehouseCount || summary?.warehouseCount), hint: "warehouses with active inventory" }
     ];
   }, [inventoryRows, lowStockThreshold, skuRows, summary]);
 
+  /* ── Aggregations ───────────────────────────────────────────── */
+
   const warehouseRows = useMemo(() => {
     const aggregationMap = new Map();
-
     for (const row of inventoryRows) {
       if (!aggregationMap.has(row.warehouseId)) {
         aggregationMap.set(row.warehouseId, {
@@ -234,28 +124,23 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
           locationSet: new Set()
         });
       }
-
       const aggregationRow = aggregationMap.get(row.warehouseId);
       aggregationRow.totalUnits += Number(row.quantity || 0);
       aggregationRow.skuSet.add(row.skuId);
       aggregationRow.locationSet.add(row.locationId);
     }
-
-    return Array.from(aggregationMap.values())
-      .map((row) => ({
-        warehouseId: row.warehouseId,
-        warehouseCode: row.warehouseCode,
-        warehouseName: row.warehouseName,
-        totalUnits: row.totalUnits,
-        skuCount: row.skuSet.size,
-        locationCount: row.locationSet.size
-      }))
-      .sort((left, right) => right.totalUnits - left.totalUnits);
+    return Array.from(aggregationMap.values()).map((row) => ({
+      warehouseId: row.warehouseId,
+      warehouseCode: row.warehouseCode,
+      warehouseName: row.warehouseName,
+      totalUnits: row.totalUnits,
+      skuCount: row.skuSet.size,
+      locationCount: row.locationSet.size
+    }));
   }, [inventoryRows]);
 
   const allSkuRows = useMemo(() => {
     const aggregationMap = new Map();
-
     for (const row of inventoryRows) {
       if (!aggregationMap.has(row.skuId)) {
         aggregationMap.set(row.skuId, {
@@ -267,60 +152,91 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
           warehouseSet: new Set()
         });
       }
-
       const aggregationRow = aggregationMap.get(row.skuId);
       aggregationRow.totalUnits += Number(row.quantity || 0);
       aggregationRow.locationSet.add(row.locationId);
       aggregationRow.warehouseSet.add(row.warehouseCode);
     }
-
-    return Array.from(aggregationMap.values())
-      .map((row) => ({
-        skuId: row.skuId,
-        sku: row.sku,
-        skuDescription: row.skuDescription,
-        totalUnits: row.totalUnits,
-        locationCount: row.locationSet.size,
-        warehouseCount: row.warehouseSet.size,
-        warehouses: row.warehouseSet
-      }))
-      .sort((left, right) => right.totalUnits - left.totalUnits);
+    return Array.from(aggregationMap.values()).map((row) => ({
+      skuId: row.skuId,
+      sku: row.sku,
+      skuDescription: row.skuDescription,
+      totalUnits: row.totalUnits,
+      locationCount: row.locationSet.size,
+      warehouseCount: row.warehouseSet.size,
+      warehouses: row.warehouseSet
+    }));
   }, [inventoryRows]);
-
-  const skuFilterOptions = useMemo(() => {
-    const warehouses = [...new Set(inventoryRows.map((r) => r.warehouseCode))].sort();
-    return { warehouses };
-  }, [inventoryRows]);
-
-  const filteredSkuRows = useMemo(() => {
-    return allSkuRows.filter((row) => {
-      if (skuFilterWarehouse && !row.warehouses.has(skuFilterWarehouse)) return false;
-      if (skuFilterSearch) {
-        const q = skuFilterSearch.toLowerCase();
-        if (!row.sku.toLowerCase().includes(q) && !(row.skuDescription || "").toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-  }, [allSkuRows, skuFilterWarehouse, skuFilterSearch]);
 
   const lowStockRows = useMemo(() => {
     const threshold = Math.max(0, Number(lowStockThreshold) || 0);
     return skuRows
-      .map((row) => ({
-        ...row,
-        totalQuantity: Number(row.totalQuantity || 0)
-      }))
+      .map((row) => ({ ...row, totalQuantity: Number(row.totalQuantity || 0) }))
       .filter((row) => row.totalQuantity <= threshold)
       .sort((left, right) => left.totalQuantity - right.totalQuantity)
       .slice(0, 10);
   }, [lowStockThreshold, skuRows]);
 
+  /* ── Filters ───────────────────────────────────────────────── */
+
+  const skuWarehouseOptions = useMemo(
+    () => [...new Set(inventoryRows.map((r) => r.warehouseCode))].sort(),
+    [inventoryRows]
+  );
+
+  const filteredSkuRows = useMemo(() => {
+    const search = skuFilters.search.trim().toLowerCase();
+    return allSkuRows.filter((row) => {
+      if (skuFilters.warehouse && !row.warehouses.has(skuFilters.warehouse)) return false;
+      if (search && !row.sku.toLowerCase().includes(search) && !(row.skuDescription || "").toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }, [allSkuRows, skuFilters]);
+
+  const locFilterOptions = useMemo(() => ({
+    warehouses: [...new Set(locationRows.map((r) => r.warehouseCode))].sort(),
+    zones: [...new Set(locationRows.map((r) => r.zoneName))].sort(),
+    types: [...new Set(locationRows.map((r) => r.type))].sort()
+  }), [locationRows]);
+
+  const filteredLocations = useMemo(() => {
+    const search = locFilters.search.trim().toLowerCase();
+    return locationRows.filter((loc) => {
+      if (locFilters.warehouse && loc.warehouseCode !== locFilters.warehouse) return false;
+      if (locFilters.zone && loc.zoneName !== locFilters.zone) return false;
+      if (locFilters.status && loc.status !== locFilters.status) return false;
+      if (locFilters.type && loc.type !== locFilters.type) return false;
+      if (search && !loc.code.toLowerCase().includes(search) && !loc.name.toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }, [locationRows, locFilters]);
+
+  const filteredMovements = useMemo(() => {
+    const search = movFilters.search.trim().toLowerCase();
+    return movementRows.filter((row) => {
+      if (movFilters.type && row.movementType !== movFilters.type) return false;
+      if (search
+        && !(row.sku || "").toLowerCase().includes(search)
+        && !(row.skuDescription || "").toLowerCase().includes(search)
+        && !(row.fromLocationCode || "").toLowerCase().includes(search)
+        && !(row.toLocationCode || "").toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }, [movementRows, movFilters]);
+
+  /* ── Actions ───────────────────────────────────────────────── */
+
   const handleToggleStatus = useCallback(async (loc) => {
     const newStatus = loc.status === "active" ? "locked" : "active";
     setTogglingId(loc.id);
     try {
-      await patchJson(`/api/locations/${loc.id}/status`, { status: newStatus }, jwtToken, onAuthError);
-      setLocationRows((prev) => prev.map((r) => r.id === loc.id ? { ...r, status: newStatus } : r));
+      await fetchJson(`/api/locations/${loc.id}/status`, {
+        jwtToken,
+        onAuthError,
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus })
+      });
+      setLocationRows((prev) => prev.map((r) => (r.id === loc.id ? { ...r, status: newStatus } : r)));
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -328,410 +244,296 @@ function InventoryDashboard({ jwtToken, user, onAuthError }) {
     }
   }, [jwtToken, onAuthError]);
 
-  const locFilterOptions = useMemo(() => {
-    const warehouses = [...new Set(locationRows.map((r) => r.warehouseCode))].sort();
-    const zones = [...new Set(locationRows.map((r) => r.zoneName))].sort();
-    const types = [...new Set(locationRows.map((r) => r.type))].sort();
-    return { warehouses, zones, types };
-  }, [locationRows]);
+  /* ── Columns ───────────────────────────────────────────────── */
 
-  const filteredLocations = useMemo(() => {
-    return locationRows.filter((loc) => {
-      if (locFilterWarehouse && loc.warehouseCode !== locFilterWarehouse) return false;
-      if (locFilterZone && loc.zoneName !== locFilterZone) return false;
-      if (locFilterStatus && loc.status !== locFilterStatus) return false;
-      if (locFilterType && loc.type !== locFilterType) return false;
-      if (locFilterSearch) {
-        const q = locFilterSearch.toLowerCase();
-        if (!loc.code.toLowerCase().includes(q) && !loc.name.toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-  }, [locationRows, locFilterWarehouse, locFilterZone, locFilterStatus, locFilterType, locFilterSearch]);
+  const warehouseColumns = [
+    {
+      key: "warehouseCode",
+      label: "Warehouse",
+      render: (r) => <span className="font-semibold">{r.warehouseCode} — {r.warehouseName}</span>
+    },
+    { key: "locationCount", label: "Locations", align: "center", sortValue: (r) => r.locationCount, render: (r) => formatNumber(r.locationCount) },
+    { key: "skuCount", label: "SKUs", align: "center", sortValue: (r) => r.skuCount, render: (r) => formatNumber(r.skuCount) },
+    { key: "totalUnits", label: "Total Units", align: "right", sortValue: (r) => r.totalUnits, render: (r) => <span className="font-semibold">{formatNumber(r.totalUnits)}</span> }
+  ];
 
-  // Reset pagination when filters change
-  useEffect(() => { setLocPage(1); }, [locFilterWarehouse, locFilterZone, locFilterStatus, locFilterType, locFilterSearch]);
-  useEffect(() => { setSkuPage(1); }, [skuFilterSearch, skuFilterWarehouse]);
+  const skuColumns = [
+    { key: "sku", label: "SKU", cellClassName: "font-mono text-xs font-semibold" },
+    { key: "skuDescription", label: "Description", cellClassName: "text-black/60", render: (r) => r.skuDescription || <span className="text-black/30">—</span> },
+    { key: "locationCount", label: "Locations", align: "center", sortValue: (r) => r.locationCount, render: (r) => formatNumber(r.locationCount) },
+    { key: "warehouseCount", label: "Warehouses", align: "center", sortValue: (r) => r.warehouseCount, render: (r) => formatNumber(r.warehouseCount) },
+    { key: "totalUnits", label: "Total Units", align: "right", sortValue: (r) => r.totalUnits, render: (r) => <span className="font-semibold">{formatNumber(r.totalUnits)}</span> }
+  ];
 
-  // Pagination helpers
-  const LOC_PER_PAGE = 10;
-  const MOV_PER_PAGE = 10;
-  const SKU_PER_PAGE = 10;
+  const locationColumns = [
+    {
+      key: "code",
+      label: "Code",
+      render: (loc) => (
+        <div>
+          <p className="font-mono text-xs font-semibold">{loc.code}</p>
+          <p className="text-xs text-black/40">{loc.name}</p>
+        </div>
+      )
+    },
+    { key: "zoneName", label: "Zone", cellClassName: "text-black/60" },
+    { key: "warehouseCode", label: "Warehouse", cellClassName: "text-black/60" },
+    { key: "type", label: "Type", render: (loc) => <Badge tone={LOCATION_TYPE_TONES[loc.type]}>{loc.type}</Badge> },
+    { key: "capacity", label: "Capacity", align: "center", sortValue: (loc) => Number(loc.capacity), render: (loc) => formatNumber(loc.capacity) },
+    {
+      key: "usedCapacity",
+      label: "Used",
+      align: "center",
+      sortValue: (loc) => Number(loc.usedCapacity || 0),
+      render: (loc) => formatNumber(loc.usedCapacity || 0)
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (loc) => <Badge tone={loc.status === "active" ? "green" : "red"}>{loc.status}</Badge>
+    },
+    {
+      key: "actions",
+      label: "Action",
+      sortable: false,
+      align: "right",
+      render: (loc) => (
+        <button
+          type="button"
+          disabled={togglingId === loc.id}
+          onClick={() => handleToggleStatus(loc)}
+          className={`rounded-lg border px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+            loc.status === "active"
+              ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+          }`}
+        >
+          {togglingId === loc.id ? "…" : loc.status === "active" ? "Lock" : "Activate"}
+        </button>
+      )
+    }
+  ];
 
-  const locTotalPages = Math.max(1, Math.ceil(filteredLocations.length / LOC_PER_PAGE));
-  const pagedLocations = filteredLocations.slice((locPage - 1) * LOC_PER_PAGE, locPage * LOC_PER_PAGE);
+  const movementColumns = [
+    {
+      key: "createdAt",
+      label: "When",
+      sortValue: (r) => r.createdAt,
+      render: (r) => <span className="whitespace-nowrap text-xs text-black/60">{formatDateTime(r.createdAt)}</span>
+    },
+    {
+      key: "sku",
+      label: "SKU",
+      render: (r) => (
+        <span>
+          <span className="font-mono text-xs font-semibold">{r.sku}</span>
+          {r.skuDescription && <span className="text-black/50"> — {r.skuDescription}</span>}
+        </span>
+      )
+    },
+    {
+      key: "movementType",
+      label: "Type",
+      render: (r) => <Badge tone={MOVEMENT_TONES[r.movementType]}>{r.movementType}</Badge>
+    },
+    { key: "fromLocationCode", label: "From", render: (r) => r.fromLocationCode || <span className="text-black/30">—</span> },
+    { key: "toLocationCode", label: "To", render: (r) => r.toLocationCode || <span className="text-black/30">—</span> },
+    { key: "quantity", label: "Qty", align: "right", sortValue: (r) => Number(r.quantity), render: (r) => <span className="font-semibold">{formatNumber(r.quantity)}</span> }
+  ];
 
-  const movTotalPages = Math.max(1, Math.ceil(movementRows.length / MOV_PER_PAGE));
-  const pagedMovements = movementRows.slice((movPage - 1) * MOV_PER_PAGE, movPage * MOV_PER_PAGE);
-
-  const skuTotalPages = Math.max(1, Math.ceil(filteredSkuRows.length / SKU_PER_PAGE));
-  const pagedSkuRows = filteredSkuRows.slice((skuPage - 1) * SKU_PER_PAGE, skuPage * SKU_PER_PAGE);
-
-  const PaginationControls = ({ page, totalPages, setPage, totalItems, label }) => (
-    <div className="mt-3 flex items-center justify-between text-xs text-black/60">
-      <p>{totalItems} {label}</p>
-      <div className="flex items-center gap-2">
-        <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}
-          className="rounded-lg border border-black/15 px-2 py-1 hover:bg-canvas disabled:opacity-40">Prev</button>
-        <span>Page {page} of {totalPages}</span>
-        <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)}
-          className="rounded-lg border border-black/15 px-2 py-1 hover:bg-canvas disabled:opacity-40">Next</button>
-      </div>
-    </div>
-  );
+  const locsFiltered = locFilters.search || locFilters.warehouse || locFilters.zone || locFilters.status || locFilters.type;
+  const skusFiltered = skuFilters.search || skuFilters.warehouse;
+  const movsFiltered = movFilters.search || movFilters.type;
 
   return (
     <main className="min-h-screen bg-canvas px-4 py-6 text-ink sm:px-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-        <header className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Inventory Control</p>
-          <div className="mt-2">
-            <h1 className="text-2xl font-black sm:text-3xl">Inventory Dashboard</h1>
-          </div>
-        </header>
+        <PageHeader
+          eyebrow="Inventory Control"
+          title="Inventory Dashboard"
+          subtitle="Stock levels, locations, and movement history"
+        />
 
-        {errorMessage && (
-          <section className="rounded-xl border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal">
-            {errorMessage}
-          </section>
-        )}
+        <ErrorBanner message={errorMessage} />
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {isLoading
-            ? Array.from({ length: 6 }).map((_, index) => (
-                <article
-                  key={`inventory-kpi-loading-${index}`}
-                  className="h-28 animate-pulse rounded-2xl border border-black/10 bg-white p-4"
-                />
-              ))
-            : kpis.map((kpi) => (
-                <article key={kpi.id} className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-black/60">{kpi.title}</p>
-                  <p className="mt-2 text-3xl font-black">{kpi.value}</p>
-                  <p className="mt-1 text-xs text-black/50">{kpi.hint}</p>
-                </article>
-              ))}
+          {kpis.map((kpi) => (
+            <StatCard key={kpi.id} loading={isLoading} label={kpi.label} value={kpi.value} hint={kpi.hint} tone={kpi.tone} />
+          ))}
         </section>
 
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Stock by Warehouse</h2>
-            <p className="text-xs text-black/60">{warehouseRows.length} active warehouse(s)</p>
-          </div>
+        <Section title="Stock by Warehouse" meta={`${warehouseRows.length} active warehouse(s)`}>
+          <DataTable
+            columns={warehouseColumns}
+            rows={warehouseRows}
+            rowKey={(r) => r.warehouseId}
+            loading={isLoading}
+            emptyTitle="No stock recorded yet"
+            initialSort={{ key: "totalUnits", dir: "desc" }}
+            minWidth="min-w-[640px]"
+          />
+        </Section>
 
+        <Section
+          title="Low Stock SKUs"
+          meta={
+            <label className="text-xs text-black/60">
+              Threshold
+              <input
+                type="number"
+                min="0"
+                className="ml-2 w-20 rounded-md border border-black/15 px-2 py-1 text-sm"
+                value={lowStockThreshold}
+                onChange={(event) => setLowStockThreshold(Number(event.target.value))}
+              />
+            </label>
+          }
+        >
           {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={`warehouse-loading-${index}`} className="h-16 animate-pulse rounded-xl bg-canvas" />
-              ))}
-            </div>
+            <div className="h-14 animate-pulse rounded-xl bg-canvas" />
+          ) : lowStockRows.length === 0 ? (
+            <p className="text-sm text-black/60">No low-stock SKU under current threshold.</p>
           ) : (
-            <div className="overflow-auto">
-              <table className="min-w-[640px] w-full text-left text-sm">
-                <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                  <tr>
-                    <th className="px-2 py-2">Warehouse</th>
-                    <th className="px-2 py-2">Locations</th>
-                    <th className="px-2 py-2">SKUs</th>
-                    <th className="px-2 py-2">Total Units</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {warehouseRows.map((row) => (
-                    <tr key={row.warehouseId} className="border-b border-black/10">
-                      <td className="px-2 py-2 font-semibold">
-                        {row.warehouseCode} - {row.warehouseName}
-                      </td>
-                      <td className="px-2 py-2">{formatNumber(row.locationCount)}</td>
-                      <td className="px-2 py-2">{formatNumber(row.skuCount)}</td>
-                      <td className="px-2 py-2 font-semibold">{formatNumber(row.totalUnits)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-black">Low Stock SKUs</h2>
-              <label className="text-xs text-black/60">
-                Threshold
-                <input
-                  type="number"
-                  min="0"
-                  className="ml-2 w-20 rounded-md border border-black/15 px-2 py-1 text-sm"
-                  value={lowStockThreshold}
-                  onChange={(event) => setLowStockThreshold(Number(event.target.value))}
-                />
-              </label>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={`low-stock-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
-                ))}
-              </div>
-            ) : lowStockRows.length === 0 ? (
-              <p className="text-sm text-black/60">No low-stock SKU under current threshold.</p>
-            ) : (
-              <ul className="space-y-2">
-                {lowStockRows.map((row) => (
-                  <li key={row.id} className="rounded-xl border border-black/10 p-3">
-                    <p className="text-sm font-semibold">
-                      {row.sku}{row.description ? ` - ${row.description}` : ""}
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {lowStockRows.map((row) => (
+                <li key={row.id} className="flex items-center justify-between gap-2 rounded-xl border border-black/10 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {row.sku}{row.description ? ` — ${row.description}` : ""}
                     </p>
-                    <p className="mt-1 text-xs text-black/60">Total units: {formatNumber(row.totalQuantity)}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-        </section>
-
-        {/* SKU by Units — filtered & paginated table */}
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">SKU by Units</h2>
-            <p className="text-xs text-black/60">
-              {filteredSkuRows.length} of {allSkuRows.length} SKU(s)
-            </p>
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search SKU or description…"
-              value={skuFilterSearch}
-              onChange={(e) => setSkuFilterSearch(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm"
-            />
-            <select value={skuFilterWarehouse} onChange={(e) => setSkuFilterWarehouse(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
-              <option value="">All warehouses</option>
-              {skuFilterOptions.warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
-            </select>
-            {(skuFilterSearch || skuFilterWarehouse) && (
-              <button type="button" onClick={() => { setSkuFilterSearch(""); setSkuFilterWarehouse(""); }}
-                className="text-xs font-semibold text-accent hover:underline">Clear filters</button>
-            )}
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`sku-units-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
+                    <p className="mt-0.5 text-xs text-black/55">{formatNumber(row.totalQuantity)} units on hand</p>
+                  </div>
+                  <Badge tone={row.totalQuantity === 0 ? "red" : "amber"}>
+                    {row.totalQuantity === 0 ? "out" : "low"}
+                  </Badge>
+                </li>
               ))}
-            </div>
-          ) : filteredSkuRows.length === 0 ? (
-            <p className="text-sm text-black/60">No SKU matches the current filters.</p>
-          ) : (
-            <>
-              <div className="overflow-auto">
-                <table className="min-w-[700px] w-full text-left text-sm">
-                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                    <tr>
-                      <th className="px-2 py-2">SKU</th>
-                      <th className="px-2 py-2">Description</th>
-                      <th className="px-2 py-2">Locations</th>
-                      <th className="px-2 py-2">Warehouses</th>
-                      <th className="px-2 py-2 text-right">Total Units</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedSkuRows.map((row) => (
-                      <tr key={row.skuId} className="border-b border-black/10">
-                        <td className="px-2 py-2 font-mono text-xs font-semibold">{row.sku}</td>
-                        <td className="px-2 py-2 text-black/60">{row.skuDescription || "-"}</td>
-                        <td className="px-2 py-2">{formatNumber(row.locationCount)}</td>
-                        <td className="px-2 py-2">{formatNumber(row.warehouseCount)}</td>
-                        <td className="px-2 py-2 text-right font-semibold">{formatNumber(row.totalUnits)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <PaginationControls page={skuPage} totalPages={skuTotalPages} setPage={setSkuPage}
-                totalItems={filteredSkuRows.length} label="SKU(s)" />
-            </>
+            </ul>
           )}
-        </section>
+        </Section>
 
-        {/* Locations — filtered & paginated */}
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Locations</h2>
-            <p className="text-xs text-black/60">
-              {filteredLocations.length} of {locationRows.length} location(s)
-            </p>
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search code or name…"
-              value={locFilterSearch}
-              onChange={(e) => setLocFilterSearch(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm"
-            />
-            <select value={locFilterWarehouse} onChange={(e) => setLocFilterWarehouse(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
-              <option value="">All warehouses</option>
-              {locFilterOptions.warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
-            </select>
-            <select value={locFilterZone} onChange={(e) => setLocFilterZone(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
-              <option value="">All zones</option>
-              {locFilterOptions.zones.map((z) => <option key={z} value={z}>{z}</option>)}
-            </select>
-            <select value={locFilterStatus} onChange={(e) => setLocFilterStatus(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="locked">Locked</option>
-            </select>
-            <select value={locFilterType} onChange={(e) => setLocFilterType(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm">
-              <option value="">All types</option>
-              {locFilterOptions.types.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            {(locFilterSearch || locFilterWarehouse || locFilterZone || locFilterStatus || locFilterType) && (
-              <button type="button" onClick={() => { setLocFilterSearch(""); setLocFilterWarehouse(""); setLocFilterZone(""); setLocFilterStatus(""); setLocFilterType(""); }}
-                className="text-xs font-semibold text-accent hover:underline">Clear filters</button>
-            )}
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`loc-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
-              ))}
-            </div>
-          ) : filteredLocations.length === 0 ? (
-            <p className="text-sm text-black/60">No locations match the current filters.</p>
-          ) : (
+        <Section
+          title="SKU by Units"
+          meta={`${filteredSkuRows.length} of ${allSkuRows.length} SKU(s)`}
+          toolbar={
             <>
-              <div className="overflow-auto">
-                <table className="min-w-[900px] w-full text-left text-sm">
-                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                    <tr>
-                      <th className="px-2 py-2">Code</th>
-                      <th className="px-2 py-2">Name</th>
-                      <th className="px-2 py-2">Zone</th>
-                      <th className="px-2 py-2">Warehouse</th>
-                      <th className="px-2 py-2">Type</th>
-                      <th className="px-2 py-2 text-center">Capacity</th>
-                      <th className="px-2 py-2">Status</th>
-                      <th className="px-2 py-2 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedLocations.map((loc) => (
-                      <tr key={loc.id} className="border-b border-black/10">
-                        <td className="px-2 py-2 font-mono text-xs font-semibold">{loc.code}</td>
-                        <td className="px-2 py-2">{loc.name}</td>
-                        <td className="px-2 py-2 text-black/60">{loc.zoneName}</td>
-                        <td className="px-2 py-2 text-black/60">{loc.warehouseCode}</td>
-                        <td className="px-2 py-2">
-                          <span className="rounded-full border border-black/10 bg-canvas px-2 py-0.5 text-xs font-semibold">
-                            {loc.type}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">{formatNumber(loc.capacity)}</td>
-                        <td className="px-2 py-2">
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            loc.status === "active"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-red-100 text-red-700"
-                          }`}>
-                            {loc.status}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-right">
-                          <button
-                            type="button"
-                            disabled={togglingId === loc.id}
-                            onClick={() => handleToggleStatus(loc)}
-                            className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                              loc.status === "active"
-                                ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                                : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                            } disabled:opacity-50`}
-                          >
-                            {togglingId === loc.id ? "…" : loc.status === "active" ? "Lock" : "Activate"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <PaginationControls page={locPage} totalPages={locTotalPages} setPage={setLocPage}
-                totalItems={filteredLocations.length} label="location(s)" />
+              <SearchInput
+                value={skuFilters.search}
+                onChange={(search) => setSkuFilters((f) => ({ ...f, search }))}
+                placeholder="Search SKU or description…"
+                className="w-56"
+              />
+              <FilterSelect
+                value={skuFilters.warehouse}
+                onChange={(warehouse) => setSkuFilters((f) => ({ ...f, warehouse }))}
+                options={skuWarehouseOptions}
+                allLabel="All warehouses"
+              />
+              <ClearFiltersButton visible={Boolean(skusFiltered)} onClear={() => setSkuFilters({ search: "", warehouse: "" })} />
             </>
-          )}
-        </section>
+          }
+        >
+          <DataTable
+            columns={skuColumns}
+            rows={filteredSkuRows}
+            rowKey={(r) => r.skuId}
+            loading={isLoading}
+            emptyTitle={allSkuRows.length === 0 ? "No stock on hand" : "No SKU matches the current filters"}
+            initialSort={{ key: "totalUnits", dir: "desc" }}
+            pageSize={10}
+            paginationLabel="SKU(s)"
+            minWidth="min-w-[700px]"
+          />
+        </Section>
 
-        {/* Recent Movements — paginated, 10 per page */}
-        <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-black">Recent Movements</h2>
-            <p className="text-xs text-black/60">{movementRows.length} record(s)</p>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`movement-loading-${index}`} className="h-14 animate-pulse rounded-xl bg-canvas" />
-              ))}
-            </div>
-          ) : movementRows.length === 0 ? (
-            <p className="text-sm text-black/60">No recent movement found.</p>
-          ) : (
+        <Section
+          title="Locations"
+          meta={`${filteredLocations.length} of ${locationRows.length} location(s)`}
+          toolbar={
             <>
-              <div className="overflow-auto">
-                <table className="min-w-[840px] w-full text-left text-sm">
-                  <thead className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                    <tr>
-                      <th className="px-2 py-2">When</th>
-                      <th className="px-2 py-2">SKU</th>
-                      <th className="px-2 py-2">Type</th>
-                      <th className="px-2 py-2">From</th>
-                      <th className="px-2 py-2">To</th>
-                      <th className="px-2 py-2">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedMovements.map((row) => {
-                      const badgeClassName =
-                        movementTypeClassNameMap[row.movementType] || "border-slate-300 bg-slate-100 text-slate-700";
-
-                      return (
-                        <tr key={row.id} className="border-b border-black/10">
-                          <td className="px-2 py-2 whitespace-nowrap">{formatDateTime(row.createdAt)}</td>
-                          <td className="px-2 py-2">
-                            {row.sku}{row.skuDescription ? ` - ${row.skuDescription}` : ""}
-                          </td>
-                          <td className="px-2 py-2">
-                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClassName}`}>
-                              {row.movementType}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2">{row.fromLocationCode || "-"}</td>
-                          <td className="px-2 py-2">{row.toLocationCode || "-"}</td>
-                          <td className="px-2 py-2 font-semibold">{formatNumber(row.quantity)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <PaginationControls page={movPage} totalPages={movTotalPages} setPage={setMovPage}
-                totalItems={movementRows.length} label="movement(s)" />
+              <SearchInput
+                value={locFilters.search}
+                onChange={(search) => setLocFilters((f) => ({ ...f, search }))}
+                placeholder="Search code or name…"
+                className="w-56"
+              />
+              <FilterSelect
+                value={locFilters.warehouse}
+                onChange={(warehouse) => setLocFilters((f) => ({ ...f, warehouse }))}
+                options={locFilterOptions.warehouses}
+                allLabel="All warehouses"
+              />
+              <FilterSelect
+                value={locFilters.zone}
+                onChange={(zone) => setLocFilters((f) => ({ ...f, zone }))}
+                options={locFilterOptions.zones}
+                allLabel="All zones"
+              />
+              <FilterSelect
+                value={locFilters.status}
+                onChange={(status) => setLocFilters((f) => ({ ...f, status }))}
+                options={[{ value: "active", label: "Active" }, { value: "locked", label: "Locked" }]}
+                allLabel="All statuses"
+              />
+              <FilterSelect
+                value={locFilters.type}
+                onChange={(type) => setLocFilters((f) => ({ ...f, type }))}
+                options={locFilterOptions.types}
+                allLabel="All types"
+              />
+              <ClearFiltersButton
+                visible={Boolean(locsFiltered)}
+                onClear={() => setLocFilters({ search: "", warehouse: "", zone: "", status: "", type: "" })}
+              />
             </>
-          )}
-        </section>
+          }
+        >
+          <DataTable
+            columns={locationColumns}
+            rows={filteredLocations}
+            rowKey={(loc) => loc.id}
+            loading={isLoading}
+            emptyTitle={locationRows.length === 0 ? "No locations yet" : "No locations match the current filters"}
+            initialSort={{ key: "code", dir: "asc" }}
+            pageSize={10}
+            paginationLabel="location(s)"
+            minWidth="min-w-[940px]"
+          />
+        </Section>
+
+        <Section
+          title="Recent Movements"
+          meta={`${filteredMovements.length} of ${movementRows.length} record(s)`}
+          toolbar={
+            <>
+              <SearchInput
+                value={movFilters.search}
+                onChange={(search) => setMovFilters((f) => ({ ...f, search }))}
+                placeholder="Search SKU or location…"
+                className="w-56"
+              />
+              <FilterSelect
+                value={movFilters.type}
+                onChange={(type) => setMovFilters((f) => ({ ...f, type }))}
+                options={Object.keys(MOVEMENT_TONES)}
+                allLabel="All types"
+              />
+              <ClearFiltersButton visible={Boolean(movsFiltered)} onClear={() => setMovFilters({ search: "", type: "" })} />
+            </>
+          }
+        >
+          <DataTable
+            columns={movementColumns}
+            rows={filteredMovements}
+            rowKey={(r) => r.id}
+            loading={isLoading}
+            emptyTitle={movementRows.length === 0 ? "No recent movement found" : "No movements match the current filters"}
+            initialSort={{ key: "createdAt", dir: "desc" }}
+            pageSize={10}
+            paginationLabel="movement(s)"
+            minWidth="min-w-[840px]"
+          />
+        </Section>
       </div>
     </main>
   );
