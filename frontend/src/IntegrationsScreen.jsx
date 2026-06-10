@@ -1,21 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { fetchJson } from "./lib/api";
 
-const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
-const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
-const buildApiUrl = (p) => (apiBaseUrl ? apiBaseUrl + p : p);
-
-async function apiRequest(urlPath, jwtToken, options = {}, onAuthError = null) {
-  const response = await fetch(buildApiUrl(urlPath), {
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwtToken },
-    ...options
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 && onAuthError) onAuthError();
-    throw new Error(payload.error || "Request failed: " + response.status);
-  }
-  return payload;
-}
+const apiRequest = (urlPath, jwtToken, options = {}, onAuthError = null) =>
+  fetchJson(urlPath, { jwtToken, onAuthError, ...options });
 
 const formatDate = (iso) => {
   if (!iso) return "\u2014";

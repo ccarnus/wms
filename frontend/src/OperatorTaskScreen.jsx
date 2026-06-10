@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { apiBaseUrl, fetchJson, getSocketBaseUrl, toQueryString } from "./lib/api";
 
-const runtimeApiBaseUrl = typeof __API_BASE_URL__ !== "undefined" ? __API_BASE_URL__ : "";
-const apiBaseUrl = String(runtimeApiBaseUrl || "").replace(/\/+$/, "");
 const apiDisplayUrl = apiBaseUrl || "same-origin (/api)";
-const buildApiUrl = (path) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
 
 const ACTIVE_STATUS_ORDER = ["in_progress", "paused", "assigned"];
 
@@ -16,52 +14,6 @@ const statusBadgeClassNameMap = {
   completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
   cancelled: "border-rose-200 bg-rose-50 text-rose-700",
   failed: "border-rose-200 bg-rose-50 text-rose-700"
-};
-
-const getSocketBaseUrl = () => {
-  if (!apiBaseUrl) {
-    return undefined;
-  }
-
-  try {
-    const parsed = new URL(apiBaseUrl, window.location.origin);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch (_error) {
-    return undefined;
-  }
-};
-
-const getAuthHeaders = (jwtToken) => {
-  const headers = { "Content-Type": "application/json" };
-  if (jwtToken) {
-    headers.Authorization = `Bearer ${jwtToken}`;
-  }
-  return headers;
-};
-
-async function fetchJson(path, { jwtToken = "", onAuthError = null, ...options } = {}) {
-  const response = await fetch(buildApiUrl(path), {
-    headers: getAuthHeaders(jwtToken),
-    ...options
-  });
-  if (!response.ok) {
-    if (response.status === 401 && onAuthError) {
-      onAuthError();
-    }
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Request failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-const toQueryString = (params) => {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && String(value) !== "") {
-      query.set(key, String(value));
-    }
-  }
-  return query.toString();
 };
 
 const deriveDisplayLocation = (taskLine) => {

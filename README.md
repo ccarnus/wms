@@ -261,6 +261,7 @@ Putaway strategies: `RANDOM` (any location with stock), `CONSOLIDATION` (same SK
 - Daily labor metrics aggregate at 23:59 (idempotent upsert): `tasks_completed`, `avg_task_time`, `units_processed`, `utilization_percent` (capped at 100%).
 - Outbound integration events (`task.completed`, `order.fulfilled`, `inventory.updated`, etc.) are dispatched by `integration-worker` with retry logic via BullMQ.
 - This compose is production-oriented: no source bind mounts, no dev servers.
+- The frontend Nginx re-resolves the `backend` hostname via Docker DNS (10s TTL), so recreating the backend container does not leave the proxy pointing at a stale IP. If the backend is down or restarting, `/api/*` returns a JSON `503 {"error": ...}` instead of an HTML error page, and the UI shows a friendly "Cannot reach the server" message.
 
 To reset all data:
 
