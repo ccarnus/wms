@@ -465,3 +465,31 @@ CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_sku_id ON purchase_order_lin
 DROP TRIGGER IF EXISTS trg_purchase_orders_set_updated_at ON purchase_orders;
 CREATE TRIGGER trg_purchase_orders_set_updated_at
   BEFORE UPDATE ON purchase_orders FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
+
+-- ── Configuration rework ─────────────────────────────────────────────
+-- Warehouse site details + activation flag
+
+ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS country TEXT;
+ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE warehouses ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+DROP TRIGGER IF EXISTS trg_warehouses_set_updated_at ON warehouses;
+CREATE TRIGGER trg_warehouses_set_updated_at
+  BEFORE UPDATE ON warehouses FOR EACH ROW EXECUTE FUNCTION set_updated_at_timestamp();
+
+-- Zone description
+
+ALTER TABLE zones ADD COLUMN IF NOT EXISTS description TEXT;
+
+-- SKU catalog attributes: unit of measure, category, stock thresholds, activation
+
+ALTER TABLE skus ADD COLUMN IF NOT EXISTS unit_of_measure TEXT NOT NULL DEFAULT 'each';
+ALTER TABLE skus ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE skus ADD COLUMN IF NOT EXISTS min_stock_level INT CHECK (min_stock_level IS NULL OR min_stock_level >= 0);
+ALTER TABLE skus ADD COLUMN IF NOT EXISTS max_stock_level INT CHECK (max_stock_level IS NULL OR max_stock_level >= 0);
+ALTER TABLE skus ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+CREATE INDEX IF NOT EXISTS idx_skus_category ON skus(category) WHERE category IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_skus_is_active ON skus(is_active) WHERE is_active = true;

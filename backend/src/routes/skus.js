@@ -1,7 +1,14 @@
 const express = require("express");
 const { query } = require("../db");
+const requireRole = require("../middlewares/requireRole");
+const {
+  validateSkuPayload,
+  validateSkuImportRows
+} = require("../services/configValidationService");
 
 const router = express.Router();
+
+const configWrite = requireRole("admin", "warehouse_manager");
 
 const badRequest = (message) => {
   const error = new Error(message);
@@ -15,63 +22,104 @@ const notFound = (message) => {
   return error;
 };
 
-const MAX_SKU_LENGTH = 100;
-const MAX_DESCRIPTION_LENGTH = 500;
-const MAX_PICTURE_URL_LENGTH = 2048;
-const MAX_BARCODE_LENGTH = 100;
-const MAX_BARCODES = 20;
-
-const validatePositiveNumber = (value, fieldName) => {
-  if (value === undefined || value === null || value === "") return null;
-  const parsed = Number(value);
-  if (Number.isNaN(parsed) || parsed < 0) {
-    throw badRequest(`${fieldName} must be a non-negative number`);
-  }
-  return parsed;
+const SKU_COLUMNS = {
+  description: "description",
+  unitOfMeasure: "unit_of_measure",
+  category: "category",
+  weightKg: "weight_kg",
+  dimensionXCm: "dimension_x_cm",
+  dimensionYCm: "dimension_y_cm",
+  dimensionZCm: "dimension_z_cm",
+  pictureUrl: "picture_url",
+  barcodes: "barcodes",
+  minStockLevel: "min_stock_level",
+  maxStockLevel: "max_stock_level",
+  isActive: "is_active"
 };
 
-const validateBarcodes = (barcodes) => {
-  if (barcodes === undefined || barcodes === null) return null;
-  if (!Array.isArray(barcodes)) {
-    throw badRequest("barcodes must be an array of strings");
-  }
-  if (barcodes.length > MAX_BARCODES) {
-    throw badRequest(`barcodes must contain at most ${MAX_BARCODES} entries`);
-  }
-  for (let i = 0; i < barcodes.length; i++) {
-    if (typeof barcodes[i] !== "string" || barcodes[i].trim().length === 0) {
-      throw badRequest(`barcodes[${i}] must be a non-empty string`);
-    }
-    if (barcodes[i].length > MAX_BARCODE_LENGTH) {
-      throw badRequest(`barcodes[${i}] must be at most ${MAX_BARCODE_LENGTH} characters`);
-    }
-  }
-  return barcodes.map((b) => b.trim());
-};
+const RETURNING_FIELDS = `
+  id, sku, description,
+  unit_of_measure AS "unitOfMeasure",
+  category,
+  weight_kg AS "weightKg",
+  dimension_x_cm AS "dimensionXCm",
+  dimension_y_cm AS "dimensionYCm",
+  dimension_z_cm AS "dimensionZCm",
+  picture_url AS "pictureUrl",
+  barcodes,
+  min_stock_level AS "minStockLevel",
+  max_stock_level AS "maxStockLevel",
+  is_active AS "isActive",
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"`;
 
-// GET /api/skus — list all SKUs with aggregated inventory quantity
-router.get("/", async (_req, res, next) => {
+const SELECT_FIELDS = `
+  s.id,
+  s.sku,
+  s.description,
+  s.unit_of_measure AS "unitOfMeasure",
+  s.category,
+  s.weight_kg AS "weightKg",
+  s.dimension_x_cm AS "dimensionXCm",
+  s.dimension_y_cm AS "dimensionYCm",
+  s.dimension_z_cm AS "dimensionZCm",
+  s.picture_url AS "pictureUrl",
+  s.barcodes,
+  s.min_stock_level AS "minStockLevel",
+  s.max_stock_level AS "maxStockLevel",
+  s.is_active AS "isActive",
+  s.created_at AS "createdAt",
+  s.updated_at AS "updatedAt",
+  COALESCE(SUM(i.quantity), 0)::int AS "totalQuantity",
+  (s.min_stock_level IS NOT NULL AND COALESCE(SUM(i.quantity), 0) < s.min_stock_level) AS "lowStock"`;
+
+// GET /api/skus — list SKUs with aggregated inventory and low-stock flag.
+// Filters: ?search= (sku/description), ?category=, ?active=true|false
+router.get("/", async (req, res, next) => {
   try {
+    const { search, category, active } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+
+    if (search) {
+      conditions.push(`(s.sku ILIKE $${idx} OR s.description ILIKE $${idx})`);
+      params.push(`%${String(search).trim()}%`);
+      idx++;
+    }
+    if (category) {
+      conditions.push(`s.category = $${idx++}`);
+      params.push(String(category).trim());
+    }
+    if (active === "true" || active === "false") {
+      conditions.push(`s.is_active = $${idx++}`);
+      params.push(active === "true");
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const { rows } = await query(
-      `SELECT
-        s.id,
-        s.sku,
-        s.description,
-        s.weight_kg AS "weightKg",
-        s.dimension_x_cm AS "dimensionXCm",
-        s.dimension_y_cm AS "dimensionYCm",
-        s.dimension_z_cm AS "dimensionZCm",
-        s.picture_url AS "pictureUrl",
-        s.barcodes,
-        s.created_at AS "createdAt",
-        s.updated_at AS "updatedAt",
-        COALESCE(SUM(i.quantity), 0)::int AS "totalQuantity"
+      `SELECT ${SELECT_FIELDS}
       FROM skus s
       LEFT JOIN inventory i ON i.sku_id = s.id
+      ${where}
       GROUP BY s.id
-      ORDER BY s.sku`
+      ORDER BY s.sku`,
+      params
     );
     res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/skus/categories — distinct category list for filters
+router.get("/categories", async (_req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT DISTINCT category FROM skus WHERE category IS NOT NULL ORDER BY category`
+    );
+    res.json(rows.map((r) => r.category));
   } catch (error) {
     next(error);
   }
@@ -81,19 +129,7 @@ router.get("/", async (_req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT
-        s.id,
-        s.sku,
-        s.description,
-        s.weight_kg AS "weightKg",
-        s.dimension_x_cm AS "dimensionXCm",
-        s.dimension_y_cm AS "dimensionYCm",
-        s.dimension_z_cm AS "dimensionZCm",
-        s.picture_url AS "pictureUrl",
-        s.barcodes,
-        s.created_at AS "createdAt",
-        s.updated_at AS "updatedAt",
-        COALESCE(SUM(i.quantity), 0)::int AS "totalQuantity"
+      `SELECT ${SELECT_FIELDS}
       FROM skus s
       LEFT JOIN inventory i ON i.sku_id = s.id
       WHERE s.id = $1
@@ -108,44 +144,31 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // POST /api/skus
-router.post("/", async (req, res, next) => {
+router.post("/", configWrite, async (req, res, next) => {
   try {
-    const { sku, description, weightKg, dimensionXCm, dimensionYCm, dimensionZCm, pictureUrl, barcodes } = req.body;
-
-    if (!sku || typeof sku !== "string" || sku.trim().length === 0) {
-      throw badRequest("sku is required");
-    }
-    const trimmedSku = sku.trim();
-    if (trimmedSku.length > MAX_SKU_LENGTH) {
-      throw badRequest(`sku must be at most ${MAX_SKU_LENGTH} characters`);
-    }
-
-    const trimmedDescription = description ? String(description).trim().slice(0, MAX_DESCRIPTION_LENGTH) : null;
-    const parsedWeightKg = validatePositiveNumber(weightKg, "weightKg");
-    const parsedDimX = validatePositiveNumber(dimensionXCm, "dimensionXCm");
-    const parsedDimY = validatePositiveNumber(dimensionYCm, "dimensionYCm");
-    const parsedDimZ = validatePositiveNumber(dimensionZCm, "dimensionZCm");
-
-    let trimmedPictureUrl = null;
-    if (pictureUrl && typeof pictureUrl === "string" && pictureUrl.trim().length > 0) {
-      trimmedPictureUrl = pictureUrl.trim().slice(0, MAX_PICTURE_URL_LENGTH);
-    }
-
-    const validatedBarcodes = validateBarcodes(barcodes);
+    const fields = validateSkuPayload(req.body);
 
     const { rows } = await query(
-      `INSERT INTO skus (sku, description, weight_kg, dimension_x_cm, dimension_y_cm, dimension_z_cm, picture_url, barcodes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, sku, description,
-                 weight_kg AS "weightKg",
-                 dimension_x_cm AS "dimensionXCm",
-                 dimension_y_cm AS "dimensionYCm",
-                 dimension_z_cm AS "dimensionZCm",
-                 picture_url AS "pictureUrl",
-                 barcodes,
-                 created_at AS "createdAt",
-                 updated_at AS "updatedAt"`,
-      [trimmedSku, trimmedDescription, parsedWeightKg, parsedDimX, parsedDimY, parsedDimZ, trimmedPictureUrl, validatedBarcodes]
+      `INSERT INTO skus (sku, description, unit_of_measure, category, weight_kg,
+                         dimension_x_cm, dimension_y_cm, dimension_z_cm, picture_url, barcodes,
+                         min_stock_level, max_stock_level, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING ${RETURNING_FIELDS}`,
+      [
+        fields.sku,
+        fields.description ?? null,
+        fields.unitOfMeasure,
+        fields.category ?? null,
+        fields.weightKg ?? null,
+        fields.dimensionXCm ?? null,
+        fields.dimensionYCm ?? null,
+        fields.dimensionZCm ?? null,
+        fields.pictureUrl ?? null,
+        fields.barcodes ?? null,
+        fields.minStockLevel ?? null,
+        fields.maxStockLevel ?? null,
+        fields.isActive ?? true
+      ]
     );
     res.status(201).json(rows[0]);
   } catch (error) {
@@ -156,64 +179,98 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// PUT /api/skus/:id
-router.put("/:id", async (req, res, next) => {
+// POST /api/skus/import — bulk upsert by SKU code (full-row replace).
+// Body: { skus: [{ sku, description, ... }, ...] }
+router.post("/import", configWrite, async (req, res, next) => {
   try {
-    const { description, weightKg, dimensionXCm, dimensionYCm, dimensionZCm, pictureUrl, barcodes } = req.body;
+    const { valid, errors } = validateSkuImportRows(req.body?.skus);
 
-    const existing = await query("SELECT id FROM skus WHERE id = $1", [req.params.id]);
+    let created = 0;
+    let updated = 0;
+
+    for (const { row, index } of valid) {
+      try {
+        const { rows } = await query(
+          `INSERT INTO skus (sku, description, unit_of_measure, category, weight_kg,
+                             dimension_x_cm, dimension_y_cm, dimension_z_cm, picture_url, barcodes,
+                             min_stock_level, max_stock_level, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           ON CONFLICT (sku) DO UPDATE SET
+             description = EXCLUDED.description,
+             unit_of_measure = EXCLUDED.unit_of_measure,
+             category = EXCLUDED.category,
+             weight_kg = EXCLUDED.weight_kg,
+             dimension_x_cm = EXCLUDED.dimension_x_cm,
+             dimension_y_cm = EXCLUDED.dimension_y_cm,
+             dimension_z_cm = EXCLUDED.dimension_z_cm,
+             picture_url = EXCLUDED.picture_url,
+             barcodes = EXCLUDED.barcodes,
+             min_stock_level = EXCLUDED.min_stock_level,
+             max_stock_level = EXCLUDED.max_stock_level,
+             is_active = EXCLUDED.is_active
+           RETURNING (xmax = 0) AS inserted`,
+          [
+            row.sku,
+            row.description ?? null,
+            row.unitOfMeasure,
+            row.category ?? null,
+            row.weightKg ?? null,
+            row.dimensionXCm ?? null,
+            row.dimensionYCm ?? null,
+            row.dimensionZCm ?? null,
+            row.pictureUrl ?? null,
+            row.barcodes ?? null,
+            row.minStockLevel ?? null,
+            row.maxStockLevel ?? null,
+            row.isActive ?? true
+          ]
+        );
+        if (rows[0].inserted) created++;
+        else updated++;
+      } catch (error) {
+        errors.push({ index, sku: row.sku, message: error.message });
+      }
+    }
+
+    res.status(errors.length > 0 && created + updated === 0 ? 400 : 200).json({
+      created,
+      updated,
+      errors
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/skus/:id — partial update (sku code itself is immutable)
+router.put("/:id", configWrite, async (req, res, next) => {
+  try {
+    const fields = validateSkuPayload(req.body, { partial: true });
+
+    const existing = await query(
+      "SELECT id, min_stock_level, max_stock_level FROM skus WHERE id = $1",
+      [req.params.id]
+    );
     if (existing.rowCount === 0) throw notFound("SKU not found");
+
+    // Cross-check thresholds against stored values when only one side changes.
+    const newMin = fields.minStockLevel !== undefined ? fields.minStockLevel : existing.rows[0].min_stock_level;
+    const newMax = fields.maxStockLevel !== undefined ? fields.maxStockLevel : existing.rows[0].max_stock_level;
+    if (newMin != null && newMax != null && newMin > newMax) {
+      throw badRequest("minStockLevel cannot be greater than maxStockLevel");
+    }
 
     const setClauses = [];
     const params = [req.params.id];
     let idx = 2;
-
-    if (description !== undefined) {
-      const val = description === null ? null : String(description).trim().slice(0, MAX_DESCRIPTION_LENGTH);
-      setClauses.push(`description = $${idx++}`);
-      params.push(val);
-    }
-    if (weightKg !== undefined) {
-      setClauses.push(`weight_kg = $${idx++}`);
-      params.push(validatePositiveNumber(weightKg, "weightKg"));
-    }
-    if (dimensionXCm !== undefined) {
-      setClauses.push(`dimension_x_cm = $${idx++}`);
-      params.push(validatePositiveNumber(dimensionXCm, "dimensionXCm"));
-    }
-    if (dimensionYCm !== undefined) {
-      setClauses.push(`dimension_y_cm = $${idx++}`);
-      params.push(validatePositiveNumber(dimensionYCm, "dimensionYCm"));
-    }
-    if (dimensionZCm !== undefined) {
-      setClauses.push(`dimension_z_cm = $${idx++}`);
-      params.push(validatePositiveNumber(dimensionZCm, "dimensionZCm"));
-    }
-    if (pictureUrl !== undefined) {
-      const val = pictureUrl === null ? null : String(pictureUrl).trim().slice(0, MAX_PICTURE_URL_LENGTH);
-      setClauses.push(`picture_url = $${idx++}`);
-      params.push(val);
-    }
-    if (barcodes !== undefined) {
-      setClauses.push(`barcodes = $${idx++}`);
-      params.push(validateBarcodes(barcodes));
-    }
-
-    if (setClauses.length === 0) {
-      throw badRequest("At least one field to update is required");
+    for (const [field, value] of Object.entries(fields)) {
+      setClauses.push(`${SKU_COLUMNS[field]} = $${idx++}`);
+      params.push(value);
     }
 
     const { rows } = await query(
       `UPDATE skus SET ${setClauses.join(", ")} WHERE id = $1
-       RETURNING id, sku, description,
-                 weight_kg AS "weightKg",
-                 dimension_x_cm AS "dimensionXCm",
-                 dimension_y_cm AS "dimensionYCm",
-                 dimension_z_cm AS "dimensionZCm",
-                 picture_url AS "pictureUrl",
-                 barcodes,
-                 created_at AS "createdAt",
-                 updated_at AS "updatedAt"`,
+       RETURNING ${RETURNING_FIELDS}`,
       params
     );
     res.json(rows[0]);
@@ -223,7 +280,7 @@ router.put("/:id", async (req, res, next) => {
 });
 
 // DELETE /api/skus/:id
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", configWrite, async (req, res, next) => {
   try {
     const invCheck = await query("SELECT id FROM inventory WHERE sku_id = $1 AND quantity > 0 LIMIT 1", [req.params.id]);
     if (invCheck.rowCount > 0) {

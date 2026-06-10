@@ -22,7 +22,7 @@ docker compose build --no-cache backend && docker compose up -d backend
 ### Backend tests (Node.js built-in test runner + assert/strict)
 ```bash
 cd backend && npm test
-# Runs: test/pickTaskGeneration.test.js && test/putawayTaskGeneration.test.js && test/laborMetricsAggregationService.test.js
+# Runs: test/pickTaskGeneration.test.js && test/putawayTaskGeneration.test.js && test/laborMetricsAggregationService.test.js && test/configValidation.test.js
 ```
 
 ### Seed the default admin user
@@ -59,7 +59,7 @@ Workers (separate Node processes, same Docker image as backend):
 - **`index.js`** — Creates HTTP server, initializes Socket.IO, connects to PostgreSQL, starts BullMQ queue.
 - **`db.js`** — PostgreSQL connection pool. All database access uses `query(sql, params)` with parameterized queries.
 - **`routes/`** — Express routers. Each file exports a router mounted in `app.js`. Includes: auth, tasks, operators, labor, users, sales-orders, order-events, integrations, warehouses, zones, locations, skus, wms (inventory/movements/summary), health.
-- **`services/`** — Business logic. Services use `query()` from `db.js` directly (no ORM). Errors use `error.statusCode` pattern caught by `errorHandler` middleware.
+- **`services/`** — Business logic. Services use `query()` from `db.js` directly (no ORM). Errors use `error.statusCode` pattern caught by `errorHandler` middleware. `configValidationService.js` holds the pure (DB-free) validation/normalization logic for the configuration routes, including bulk location code generation and SKU import row validation.
 - **`middlewares/requireAuth.js`** — Extracts `Authorization: Bearer` token, verifies JWT, sets `req.user = { userId, username, role, operatorId }`.
 - **`middlewares/requireRole.js`** — Role-based access control middleware.
 - **`realtime/`** — Socket.IO server with JWT auth middleware. Events published to Redis pub/sub channel, then broadcast to rooms (`manager`, `operator:<id>`).
@@ -77,7 +77,7 @@ Workers (separate Node processes, same Docker image as backend):
 - Views: `DashboardScreen`, `ManagerLaborDashboard`, `OperatorTaskScreen`, `InventoryDashboard`, `ConfigurationScreen`, `UserManagementScreen`, `IntegrationsScreen`, `ChangePasswordScreen`. Views are filtered by user role.
 - **Operator role** gets a dedicated mobile-first layout (no sidebar). The operator view is exclusive to the `operator` role — other roles do not see it.
 - `OperatorTaskScreen` shows a task list (in_progress, paused, assigned) with tap-to-view detail. Tasks are not auto-started; the operator must explicitly click "Start Task". Auto-refresh is websocket-only (no polling or manual refresh button). Debug info (API URL, operator ID) is in a settings panel accessed via the user avatar.
-- `ConfigurationScreen` — manages warehouses, zones, locations, and SKUs via CRUD panels.
+- `ConfigurationScreen` — manages all master data: warehouses (site details, active flag), zones (typed, with description), locations (search/filters, capacity utilization bars, lock/unlock, bulk generation from a code pattern), and the SKU catalog (category, unit of measure, min/max stock thresholds with low-stock badges, active flag, client-side CSV import/export). Write actions are hidden unless the user role is `admin` or `warehouse_manager`.
 - API calls use native `fetch` with `Authorization: Bearer` header. No axios.
 - Real-time via `socket.io-client`. Events: `TASK_ASSIGNED`, `TASK_UPDATED`, `OPERATOR_STATUS_UPDATED`, `SALES_ORDER_UPDATED`, `INVENTORY_ALERT`, `INVENTORY_UPDATED`, `USER_PRESENCE_UPDATED`, `USER_LIST_UPDATED`.
 - Tailwind custom theme colors: `canvas` (bg), `ink` (text), `accent` (teal/primary), `signal` (orange/error).
@@ -113,6 +113,7 @@ Key tables not obvious from names:
 ## Key Patterns
 
 - **Error handling**: Throw errors with `error.statusCode` property. The global `errorHandler` middleware returns `{ error: message }` JSON.
+- **Configuration master data**: Warehouses carry site details (`address`, `city`, `country`) and an `is_active` flag; zones have a `description`; SKUs carry `unit_of_measure`, `category`, `min_stock_level`/`max_stock_level` (low-stock flag computed in queries as `totalQuantity < minStockLevel`), and `is_active`. Config write endpoints require `admin` or `warehouse_manager`. `POST /api/locations/bulk` generates location ranges (`ON CONFLICT DO NOTHING`, reports created/skipped); `POST /api/skus/import` bulk-upserts by SKU code (full-row replace).
 - **Optimistic locking**: Tasks have a `version` field. Status transitions require the current version and increment it (prevents concurrent update conflicts).
 - **Realtime event flow**: Service → `publishRealtimeEvent()` → Redis channel → Socket.IO server → broadcast to room → frontend React state update.
 - **Task lifecycle**: `created → assigned → in_progress → completed/cancelled/failed`, with `paused` as a valid intermediate state from `in_progress`.

@@ -161,7 +161,7 @@ const VIEWS = [
   {
     id: "configuration",
     label: "Configuration",
-    subtitle: "Zones, locations, and SKUs",
+    subtitle: "Warehouses, zones, locations, SKUs",
     icon: IconConfiguration
   }
 ];

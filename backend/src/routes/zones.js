@@ -1,7 +1,11 @@
 const express = require("express");
 const { query } = require("../db");
+const requireRole = require("../middlewares/requireRole");
+const { validateZonePayload } = require("../services/configValidationService");
 
 const router = express.Router();
+
+const configWrite = requireRole("admin", "warehouse_manager");
 
 const badRequest = (message) => {
   const error = new Error(message);
@@ -13,6 +17,12 @@ const notFound = (message) => {
   const error = new Error(message);
   error.statusCode = 404;
   return error;
+};
+
+const ZONE_COLUMNS = {
+  name: "name",
+  type: "type",
+  description: "description"
 };
 
 // GET /api/zones — list all zones with location count
@@ -27,6 +37,7 @@ router.get("/", async (req, res, next) => {
         w.name AS "warehouseName",
         z.name,
         z.type,
+        z.description,
         z.created_at AS "createdAt",
         z.updated_at AS "updatedAt",
         COUNT(l.id)::int AS "locationCount"
@@ -58,6 +69,7 @@ router.get("/:id", async (req, res, next) => {
         w.name AS "warehouseName",
         z.name,
         z.type,
+        z.description,
         z.created_at AS "createdAt",
         z.updated_at AS "updatedAt"
       FROM zones z
@@ -73,26 +85,19 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // POST /api/zones
-router.post("/", async (req, res, next) => {
+router.post("/", configWrite, async (req, res, next) => {
   try {
-    const { warehouseId, name, type } = req.body;
-    if (!warehouseId || !name || !type) {
-      throw badRequest("warehouseId, name, and type are required");
-    }
+    const fields = validateZonePayload(req.body);
 
-    const validTypes = ["pick", "bulk", "dock", "staging"];
-    if (!validTypes.includes(type)) {
-      throw badRequest(`type must be one of: ${validTypes.join(", ")}`);
-    }
-
-    const whCheck = await query("SELECT id FROM warehouses WHERE id = $1", [warehouseId]);
+    const whCheck = await query("SELECT id FROM warehouses WHERE id = $1", [fields.warehouseId]);
     if (whCheck.rowCount === 0) throw badRequest("Unknown warehouseId");
 
     const { rows } = await query(
-      `INSERT INTO zones (warehouse_id, name, type)
-       VALUES ($1, $2, $3::zone_type)
-       RETURNING id, warehouse_id AS "warehouseId", name, type, created_at AS "createdAt", updated_at AS "updatedAt"`,
-      [warehouseId, name.trim(), type]
+      `INSERT INTO zones (warehouse_id, name, type, description)
+       VALUES ($1, $2, $3::zone_type, $4)
+       RETURNING id, warehouse_id AS "warehouseId", name, type, description,
+                 created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [fields.warehouseId, fields.name, fields.type, fields.description ?? null]
     );
     res.status(201).json(rows[0]);
   } catch (error) {
@@ -103,18 +108,10 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// PUT /api/zones/:id
-router.put("/:id", async (req, res, next) => {
+// PUT /api/zones/:id — partial update
+router.put("/:id", configWrite, async (req, res, next) => {
   try {
-    const { name, type } = req.body;
-    if (!name && !type) throw badRequest("At least one of name or type is required");
-
-    if (type) {
-      const validTypes = ["pick", "bulk", "dock", "staging"];
-      if (!validTypes.includes(type)) {
-        throw badRequest(`type must be one of: ${validTypes.join(", ")}`);
-      }
-    }
+    const fields = validateZonePayload(req.body, { partial: true });
 
     const existing = await query("SELECT id FROM zones WHERE id = $1", [req.params.id]);
     if (existing.rowCount === 0) throw notFound("Zone not found");
@@ -122,19 +119,16 @@ router.put("/:id", async (req, res, next) => {
     const setClauses = [];
     const params = [req.params.id];
     let idx = 2;
-
-    if (name) {
-      setClauses.push(`name = $${idx++}`);
-      params.push(name.trim());
-    }
-    if (type) {
-      setClauses.push(`type = $${idx++}::zone_type`);
-      params.push(type);
+    for (const [field, value] of Object.entries(fields)) {
+      const cast = field === "type" ? "::zone_type" : "";
+      setClauses.push(`${ZONE_COLUMNS[field]} = $${idx++}${cast}`);
+      params.push(value);
     }
 
     const { rows } = await query(
       `UPDATE zones SET ${setClauses.join(", ")} WHERE id = $1
-       RETURNING id, warehouse_id AS "warehouseId", name, type, created_at AS "createdAt", updated_at AS "updatedAt"`,
+       RETURNING id, warehouse_id AS "warehouseId", name, type, description,
+                 created_at AS "createdAt", updated_at AS "updatedAt"`,
       params
     );
     res.json(rows[0]);
@@ -147,7 +141,7 @@ router.put("/:id", async (req, res, next) => {
 });
 
 // DELETE /api/zones/:id
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", configWrite, async (req, res, next) => {
   try {
     const locCheck = await query("SELECT id FROM locations WHERE zone_id = $1 LIMIT 1", [req.params.id]);
     if (locCheck.rowCount > 0) {

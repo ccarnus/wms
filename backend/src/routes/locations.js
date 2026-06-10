@@ -1,7 +1,15 @@
 const express = require("express");
 const { query } = require("../db");
+const requireRole = require("../middlewares/requireRole");
+const {
+  LOCATION_STATUSES,
+  validateLocationPayload,
+  validateBulkLocationPayload
+} = require("../services/configValidationService");
 
 const router = express.Router();
+
+const configWrite = requireRole("admin", "warehouse_manager");
 
 const badRequest = (message) => {
   const error = new Error(message);
@@ -15,13 +23,27 @@ const notFound = (message) => {
   return error;
 };
 
-const VALID_STATUSES = ["active", "locked"];
-const VALID_TYPES = ["rack", "shelf", "bin", "floor", "dock", "staging"];
+const LOCATION_COLUMNS = {
+  name: "name",
+  status: "status",
+  type: "type",
+  capacity: "capacity",
+  zoneId: "zone_id"
+};
 
-// GET /api/locations — list all locations with zone + warehouse info
+const COLUMN_CASTS = {
+  status: "::location_status",
+  type: "::location_type"
+};
+
+const RETURNING_FIELDS = `
+  id, warehouse_id AS "warehouseId", zone_id AS "zoneId", code, name, status, type, capacity,
+  created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+// GET /api/locations — list all locations with zone + warehouse info and stock usage
 router.get("/", async (req, res, next) => {
   try {
-    const { warehouseId, zoneId, status } = req.query;
+    const { warehouseId, zoneId, status, search } = req.query;
     const conditions = [];
     const params = [];
     let idx = 1;
@@ -34,9 +56,14 @@ router.get("/", async (req, res, next) => {
       conditions.push(`l.zone_id = $${idx++}`);
       params.push(zoneId);
     }
-    if (status && VALID_STATUSES.includes(status)) {
+    if (status && LOCATION_STATUSES.includes(status)) {
       conditions.push(`l.status = $${idx++}::location_status`);
       params.push(status);
+    }
+    if (search) {
+      conditions.push(`(l.code ILIKE $${idx} OR l.name ILIKE $${idx})`);
+      params.push(`%${String(search).trim()}%`);
+      idx++;
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -56,11 +83,14 @@ router.get("/", async (req, res, next) => {
         z.name AS "zoneName",
         z.type AS "zoneType",
         l.created_at AS "createdAt",
-        l.updated_at AS "updatedAt"
+        l.updated_at AS "updatedAt",
+        COALESCE(SUM(i.quantity), 0)::int AS "usedCapacity"
       FROM locations l
       INNER JOIN warehouses w ON w.id = l.warehouse_id
       INNER JOIN zones z ON z.id = l.zone_id
+      LEFT JOIN inventory i ON i.location_id = l.id
       ${where}
+      GROUP BY l.id, w.id, z.id
       ORDER BY w.code, z.name, l.code`,
       params
     );
@@ -88,11 +118,14 @@ router.get("/:id", async (req, res, next) => {
         z.name AS "zoneName",
         z.type AS "zoneType",
         l.created_at AS "createdAt",
-        l.updated_at AS "updatedAt"
+        l.updated_at AS "updatedAt",
+        COALESCE(SUM(i.quantity), 0)::int AS "usedCapacity"
       FROM locations l
       INNER JOIN warehouses w ON w.id = l.warehouse_id
       INNER JOIN zones z ON z.id = l.zone_id
-      WHERE l.id = $1`,
+      LEFT JOIN inventory i ON i.location_id = l.id
+      WHERE l.id = $1
+      GROUP BY l.id, w.id, z.id`,
       [req.params.id]
     );
     if (rows.length === 0) throw notFound("Location not found");
@@ -103,40 +136,19 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // POST /api/locations
-router.post("/", async (req, res, next) => {
+router.post("/", configWrite, async (req, res, next) => {
   try {
-    const { zoneId, code, name, status, type, capacity } = req.body;
+    const fields = validateLocationPayload(req.body);
 
-    if (!zoneId || !code || !name) {
-      throw badRequest("zoneId, code, and name are required");
-    }
-
-    // Validate zone exists and get its warehouse_id
-    const zoneCheck = await query("SELECT id, warehouse_id FROM zones WHERE id = $1", [zoneId]);
+    const zoneCheck = await query("SELECT id, warehouse_id FROM zones WHERE id = $1", [fields.zoneId]);
     if (zoneCheck.rowCount === 0) throw badRequest("Unknown zoneId");
     const warehouseId = zoneCheck.rows[0].warehouse_id;
-
-    const locStatus = status || "active";
-    if (!VALID_STATUSES.includes(locStatus)) {
-      throw badRequest(`status must be one of: ${VALID_STATUSES.join(", ")}`);
-    }
-
-    const locType = type || "rack";
-    if (!VALID_TYPES.includes(locType)) {
-      throw badRequest(`type must be one of: ${VALID_TYPES.join(", ")}`);
-    }
-
-    const locCapacity = capacity ? Number(capacity) : 1000;
-    if (!Number.isInteger(locCapacity) || locCapacity <= 0) {
-      throw badRequest("capacity must be a positive integer");
-    }
 
     const { rows } = await query(
       `INSERT INTO locations (warehouse_id, zone_id, code, name, status, type, capacity)
        VALUES ($1, $2, $3, $4, $5::location_status, $6::location_type, $7)
-       RETURNING id, warehouse_id AS "warehouseId", zone_id AS "zoneId", code, name, status, type, capacity,
-                 created_at AS "createdAt", updated_at AS "updatedAt"`,
-      [warehouseId, zoneId, code.trim(), name.trim(), locStatus, locType, locCapacity]
+       RETURNING ${RETURNING_FIELDS}`,
+      [warehouseId, fields.zoneId, fields.code, fields.name, fields.status, fields.type, fields.capacity]
     );
     res.status(201).json(rows[0]);
   } catch (error) {
@@ -147,34 +159,48 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// PUT /api/locations/:id
-router.put("/:id", async (req, res, next) => {
+// POST /api/locations/bulk — generate a range of locations from a code pattern
+router.post("/bulk", configWrite, async (req, res, next) => {
   try {
-    const { name, status, type, capacity, zoneId } = req.body;
-    if (!name && !status && !type && !capacity && !zoneId) {
-      throw badRequest("At least one field to update is required");
-    }
+    const { zoneId, status, type, capacity, codes } = validateBulkLocationPayload(req.body);
+
+    const zoneCheck = await query("SELECT id, warehouse_id FROM zones WHERE id = $1", [zoneId]);
+    if (zoneCheck.rowCount === 0) throw badRequest("Unknown zoneId");
+    const warehouseId = zoneCheck.rows[0].warehouse_id;
+
+    // Existing codes (same warehouse) are skipped, not treated as errors.
+    const { rows } = await query(
+      `INSERT INTO locations (warehouse_id, zone_id, code, name, status, type, capacity)
+       SELECT $1, $2, code, code, $3::location_status, $4::location_type, $5
+       FROM UNNEST($6::text[]) AS code
+       ON CONFLICT (warehouse_id, code) DO NOTHING
+       RETURNING ${RETURNING_FIELDS}`,
+      [warehouseId, zoneId, status, type, capacity, codes]
+    );
+
+    res.status(201).json({
+      requested: codes.length,
+      created: rows.length,
+      skipped: codes.length - rows.length,
+      locations: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/locations/:id — partial update
+router.put("/:id", configWrite, async (req, res, next) => {
+  try {
+    const fields = validateLocationPayload(req.body, { partial: true });
 
     const existing = await query("SELECT id, warehouse_id FROM locations WHERE id = $1", [req.params.id]);
     if (existing.rowCount === 0) throw notFound("Location not found");
 
-    if (status && !VALID_STATUSES.includes(status)) {
-      throw badRequest(`status must be one of: ${VALID_STATUSES.join(", ")}`);
-    }
-    if (type && !VALID_TYPES.includes(type)) {
-      throw badRequest(`type must be one of: ${VALID_TYPES.join(", ")}`);
-    }
-    if (capacity !== undefined) {
-      const cap = Number(capacity);
-      if (!Number.isInteger(cap) || cap <= 0) {
-        throw badRequest("capacity must be a positive integer");
-      }
-    }
-
-    if (zoneId) {
+    if (fields.zoneId !== undefined) {
       const zoneCheck = await query(
         "SELECT id FROM zones WHERE id = $1 AND warehouse_id = $2",
-        [zoneId, existing.rows[0].warehouse_id]
+        [fields.zoneId, existing.rows[0].warehouse_id]
       );
       if (zoneCheck.rowCount === 0) {
         throw badRequest("Zone not found or belongs to a different warehouse");
@@ -184,17 +210,14 @@ router.put("/:id", async (req, res, next) => {
     const setClauses = [];
     const params = [req.params.id];
     let idx = 2;
-
-    if (name) { setClauses.push(`name = $${idx++}`); params.push(name.trim()); }
-    if (status) { setClauses.push(`status = $${idx++}::location_status`); params.push(status); }
-    if (type) { setClauses.push(`type = $${idx++}::location_type`); params.push(type); }
-    if (capacity !== undefined) { setClauses.push(`capacity = $${idx++}`); params.push(Number(capacity)); }
-    if (zoneId) { setClauses.push(`zone_id = $${idx++}`); params.push(zoneId); }
+    for (const [field, value] of Object.entries(fields)) {
+      setClauses.push(`${LOCATION_COLUMNS[field]} = $${idx++}${COLUMN_CASTS[field] || ""}`);
+      params.push(value);
+    }
 
     const { rows } = await query(
       `UPDATE locations SET ${setClauses.join(", ")} WHERE id = $1
-       RETURNING id, warehouse_id AS "warehouseId", zone_id AS "zoneId", code, name, status, type, capacity,
-                 created_at AS "createdAt", updated_at AS "updatedAt"`,
+       RETURNING ${RETURNING_FIELDS}`,
       params
     );
     res.json(rows[0]);
@@ -204,17 +227,16 @@ router.put("/:id", async (req, res, next) => {
 });
 
 // PATCH /api/locations/:id/status — toggle active/locked
-router.patch("/:id/status", async (req, res, next) => {
+router.patch("/:id/status", configWrite, async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!status || !VALID_STATUSES.includes(status)) {
-      throw badRequest(`status must be one of: ${VALID_STATUSES.join(", ")}`);
+    if (!status || !LOCATION_STATUSES.includes(status)) {
+      throw badRequest(`status must be one of: ${LOCATION_STATUSES.join(", ")}`);
     }
 
     const { rows } = await query(
       `UPDATE locations SET status = $2::location_status WHERE id = $1
-       RETURNING id, warehouse_id AS "warehouseId", zone_id AS "zoneId", code, name, status, type, capacity,
-                 created_at AS "createdAt", updated_at AS "updatedAt"`,
+       RETURNING ${RETURNING_FIELDS}`,
       [req.params.id, status]
     );
     if (rows.length === 0) throw notFound("Location not found");
@@ -225,7 +247,7 @@ router.patch("/:id/status", async (req, res, next) => {
 });
 
 // DELETE /api/locations/:id
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", configWrite, async (req, res, next) => {
   try {
     const invCheck = await query("SELECT id FROM inventory WHERE location_id = $1 AND quantity > 0 LIMIT 1", [req.params.id]);
     if (invCheck.rowCount > 0) {

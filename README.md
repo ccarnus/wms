@@ -71,29 +71,41 @@ All endpoints except `/api/health`, `/api/auth/*`, and `/api/webhook/*` require 
 - `GET /api/health`
 - `GET /api/summary`
 
-### Warehouses
-- `GET /api/warehouses`
+### Configuration (master data)
+
+All write operations (POST/PUT/PATCH/DELETE) on warehouses, zones, locations, and SKUs require the `admin` or `warehouse_manager` role. Reads are available to any authenticated user.
+
+#### Warehouses
+- `GET /api/warehouses` — includes `address`, `city`, `country`, `isActive`, zone + location counts
 - `GET /api/warehouses/:id`
-- `POST /api/warehouses` _(admin)_
-- `PUT /api/warehouses/:id` _(admin)_
+- `POST /api/warehouses`
+- `PUT /api/warehouses/:id` — partial update (any subset of fields, incl. `isActive`)
+- `DELETE /api/warehouses/:id` — blocked while the warehouse still has zones
 
-### Zones
-- `GET /api/zones`
+#### Zones
+- `GET /api/zones?warehouseId=` — includes `description` and location count
 - `GET /api/zones/:id`
-- `POST /api/zones`
-- `PUT /api/zones/:id`
+- `POST /api/zones` — types: `pick`, `bulk`, `dock`, `staging`, `packing`
+- `PUT /api/zones/:id` — partial update
+- `DELETE /api/zones/:id` — blocked while the zone has locations or active tasks
 
-### Locations
-- `GET /api/locations`
+#### Locations
+- `GET /api/locations?warehouseId=&zoneId=&status=&search=` — includes `usedCapacity` (current stock) per location
 - `GET /api/locations/:id`
 - `POST /api/locations`
-- `PUT /api/locations/:id`
+- `POST /api/locations/bulk` — generate up to 500 locations from a code pattern: `{ zoneId, prefix, start, count, padding, type, capacity }` (existing codes are skipped, response reports `created`/`skipped`)
+- `PUT /api/locations/:id` — partial update
+- `PATCH /api/locations/:id/status` — lock/unlock (`active` / `locked`)
+- `DELETE /api/locations/:id` — blocked while the location holds inventory or is referenced by active task lines
 
-### SKUs
-- `GET /api/skus`
+#### SKUs
+- `GET /api/skus?search=&category=&active=` — includes `unitOfMeasure`, `category`, `minStockLevel`, `maxStockLevel`, `isActive`, aggregated `totalQuantity`, and a computed `lowStock` flag (`totalQuantity < minStockLevel`)
+- `GET /api/skus/categories` — distinct category list
 - `GET /api/skus/:id`
 - `POST /api/skus`
-- `PUT /api/skus/:id`
+- `POST /api/skus/import` — bulk upsert by SKU code (full-row replace): `{ skus: [...] }`, max 500 rows, response reports `created`/`updated`/`errors` per row
+- `PUT /api/skus/:id` — partial update (the SKU code itself is immutable)
+- `DELETE /api/skus/:id` — blocked while the SKU has stock, movement history, or active task lines
 
 ### Inventory
 - `GET /api/inventory`
@@ -242,6 +254,7 @@ Putaway strategies: `RANDOM` (any location with stock), `CONSOLIDATION` (same SK
 - Sales orders are persisted in the `sales_orders` / `sales_order_lines` tables and queryable via `GET /api/sales-orders`. Orders with insufficient stock are held as `pending_inventory` with `INVENTORY_ALERT` events. When inventory is replenished, pending orders are automatically re-evaluated.
 - Purchase orders are persisted in the `purchase_orders` / `purchase_order_lines` tables when processed by `task-worker` and queryable via `GET /api/purchase-orders`. Lines include the resolved `destinationLocationId` after putaway resolution.
 - The left sidebar switches between views (`Dashboard`, `Labor`, `Inventory`, `Configuration`, `Users`, `Integrations`). Operators bypass the sidebar entirely and get a full-screen task interface.
+- The Configuration view manages all master data: warehouses (site details + active flag), zones (typed, with descriptions), locations (search/filters, capacity utilization, lock/unlock, bulk generation from a code pattern), and the SKU catalog (categories, units of measure, min/max stock thresholds with low-stock badges, active flag, CSV import/export).
 - The operator view is exclusive to the `operator` role (mobile-first, sidebar-less, socket-only refresh).
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000ms`) using priority, zone matching, and lowest workload first.
 - Daily labor metrics aggregate at 23:59 (idempotent upsert): `tasks_completed`, `avg_task_time`, `units_processed`, `utilization_percent` (capped at 100%).
