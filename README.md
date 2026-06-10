@@ -171,6 +171,22 @@ All write operations (POST/PUT/PATCH/DELETE) on warehouses, zones, locations, an
 ### Webhook (inbound)
 - `POST /api/webhook/:connectorType` _(requires inbound API key)_
 
+## Integration Connectors
+
+### Generic Webhook (`generic-webhook`)
+
+Send and receive JSON payloads via HTTP webhooks. Outbound auth: `none`, `header`, `basic`, `jwt` (HS256), `oauth2` (client credentials).
+
+### Etsy (`etsy`)
+
+Syncs an Etsy shop with the WMS:
+
+- **Inbound (orders)**: Etsy has no webhooks, so the `integration-worker` polls `GET /shops/{shop_id}/receipts?was_paid=true&was_shipped=false` on a schedule (default every 5 minutes, configurable via `pollIntervalMinutes`). Each new receipt is imported as a sales order (`external_id = ETSY-<receipt_id>`) through the normal order-event queue — pick locations resolve automatically and a pick task is generated. Receipts are deduplicated by `event_key`, so polling is idempotent. Etsy listing SKUs are matched against the WMS SKU catalog by code; receipts containing unknown SKUs are *not* imported (a failed event is logged listing the missing codes) and import automatically on a later poll once the SKUs exist.
+- **Outbound (tracking)**: subscribe the integration to `shipment.dispatched` — when an Etsy-originated order's shipment is dispatched with a tracking number, the WMS calls Etsy's `createReceiptShipment` endpoint to mark the receipt shipped. Non-Etsy orders and other event types are skipped gracefully.
+- **Manual push**: a raw Etsy receipt JSON can also be POSTed to `/api/webhook/etsy` to import it immediately without waiting for the poll.
+
+Configuration (in the Integrations screen): numeric **Shop ID**, the app **keystring** (sent as `x-api-key`), and an **OAuth refresh token** obtained once via Etsy's OAuth 2.0 consent flow (scopes `transactions_r transactions_w`). Etsy rotates the refresh token on every refresh — the WMS persists the new one automatically. "Test Connection" validates the API key (`openapi-ping`) and performs a live token refresh.
+
 ## WebSocket (Socket.IO)
 
 - Transport: same host/port as backend (`/socket.io`)
@@ -259,7 +275,7 @@ Putaway strategies: `RANDOM` (any location with stock), `CONSOLIDATION` (same SK
 - The operator view is exclusive to the `operator` role (mobile-first, sidebar-less, socket-only refresh).
 - Task auto-assignment runs every `TASK_ASSIGNMENT_INTERVAL_MS` (default `10000ms`) using priority, zone matching, and lowest workload first.
 - Daily labor metrics aggregate at 23:59 (idempotent upsert): `tasks_completed`, `avg_task_time`, `units_processed`, `utilization_percent` (capped at 100%).
-- Outbound integration events (`task.completed`, `order.fulfilled`, `inventory.updated`, etc.) are dispatched by `integration-worker` with retry logic via BullMQ.
+- Outbound integration events (`task.completed`, `order.fulfilled`, `inventory.updated`, etc.) are dispatched by `integration-worker` with retry logic via BullMQ. The same worker also runs the inbound polling loop for connectors without webhooks (Etsy) — tick interval `INTEGRATION_POLL_TICK_MS` (default 60s), per-integration cadence from connector config.
 - This compose is production-oriented: no source bind mounts, no dev servers.
 - The frontend Nginx re-resolves the `backend` hostname via Docker DNS (10s TTL), so recreating the backend container does not leave the proxy pointing at a stale IP. If the backend is down or restarting, `/api/*` returns a JSON `503 {"error": ...}` instead of an HTML error page, and the UI shows a friendly "Cannot reach the server" message.
 

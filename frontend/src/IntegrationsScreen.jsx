@@ -22,7 +22,9 @@ const STATUS_BADGES = {
 const ALL_EVENTS = [
   "task.completed", "task.created", "task.assigned", "task.cancelled",
   "inventory.updated", "order.fulfilled", "operator.status_changed",
-  "inbound.order.created", "inbound.order.cancelled", "inbound.product.synced"
+  "shipment.ready_for_label", "shipment.dispatched",
+  "inbound.order.created", "inbound.order.cancelled", "inbound.product.synced",
+  "inbound.shipment.labeled"
 ];
 
 const WAREHOUSE_PROCESSES = [
@@ -74,6 +76,18 @@ function IconWebhook({ className }) {
   );
 }
 
+function IconEtsy({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l1.5-5h15L21 9" />
+      <path d="M4 9v10a1 1 0 001 1h14a1 1 0 001-1V9" />
+      <path d="M3 9h18" />
+      <path d="M9 14h6" />
+      <path d="M9 17h4" />
+    </svg>
+  );
+}
+
 function IconConnectorPlaceholder({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -94,7 +108,8 @@ function IconArrowLeft({ className }) {
 }
 
 const CONNECTOR_ICONS = {
-  "generic-webhook": IconWebhook
+  "generic-webhook": IconWebhook,
+  etsy: IconEtsy
 };
 
 const VIEW_LIST = "list";

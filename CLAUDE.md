@@ -22,7 +22,7 @@ docker compose build --no-cache backend && docker compose up -d backend
 ### Backend tests (Node.js built-in test runner + assert/strict)
 ```bash
 cd backend && npm test
-# Runs: test/pickTaskGeneration.test.js && test/putawayTaskGeneration.test.js && test/laborMetricsAggregationService.test.js && test/configValidation.test.js
+# Runs: test/pickTaskGeneration.test.js && test/putawayTaskGeneration.test.js && test/laborMetricsAggregationService.test.js && test/configValidation.test.js && test/etsyLogic.test.js
 ```
 
 ### Seed the default admin user
@@ -51,6 +51,8 @@ Workers (separate Node processes, same Docker image as backend):
   assignment-worker   → Interval timer: auto-assigns tasks to operators
   labor-metrics-worker → Cron: aggregates daily KPIs at 23:59
   integration-worker  → BullMQ consumer: dispatches outbound webhook events
+                        + interval poller: pulls inbound orders for connectors
+                          without webhooks (Etsy receipts → sales orders)
 ```
 
 ### Backend structure (`backend/src/`)
@@ -64,7 +66,7 @@ Workers (separate Node processes, same Docker image as backend):
 - **`middlewares/requireRole.js`** — Role-based access control middleware.
 - **`realtime/`** — Socket.IO server with JWT auth middleware. Events published to Redis pub/sub channel, then broadcast to rooms (`manager`, `operator:<id>`).
 - **`workers/`** — Standalone processes. Each connects independently to DB/Redis.
-- **`integrations/`** — Connector registry and connector implementations (generic-webhook with full auth support).
+- **`integrations/`** — Connector registry and connector implementations: `generic-webhook` (full auth support) and `etsy` (order pull + tracking push, OAuth refresh-token flow).
 - **`queue/`** — BullMQ queue configuration and job definitions.
 - **`models/`** — Data models (taskModel.js).
 - **`scripts/`** — Seed utilities (seed:users, seed:testdata).
@@ -106,13 +108,15 @@ Key tables not obvious from names:
 
 ### Integrations
 
-- Single connector type: `generic-webhook` (one per system; enforced by UNIQUE constraint on `connector_type`)
+- Connector types: `generic-webhook` and `etsy` (one integration per connector type; enforced by UNIQUE constraint on `connector_type`)
 - Direction: `inbound`, `outbound`, or `bidirectional`
-- **Outbound auth types**: `none`, `header`, `basic`, `jwt` (HS256), `oauth2` (client credentials)
-- **Outbound events published by services**: `task.created`, `task.assigned`, `task.completed`, `task.cancelled`, `inventory.updated`, `order.fulfilled`, `operator.status_changed`
-- **Inbound events** (via `POST /api/webhook/:connectorType`): `inbound.order.created`, `inbound.order.cancelled`, `inbound.product.synced`
+- **Outbound auth types** (generic-webhook): `none`, `header`, `basic`, `jwt` (HS256), `oauth2` (client credentials)
+- **Outbound events published by services**: `task.created`, `task.assigned`, `task.completed`, `task.cancelled`, `inventory.updated`, `order.fulfilled`, `operator.status_changed`, `shipment.ready_for_label`, `shipment.dispatched`
+- **Inbound events** (via `POST /api/webhook/:connectorType`): `inbound.order.created`, `inbound.order.cancelled`, `inbound.product.synced`, `inbound.shipment.labeled`
 - `integration-worker` processes outbound events from BullMQ with retry logic and logs every attempt in `integration_event_log`
 - Inbound API key is validated by the webhook endpoint before processing
+- **Connector contract** (`integrations/connectorRegistry.js`): required — `label`, `description`, `directions`, `configSchema`, `validateConfig`, `pushOutbound`, `handleInbound`, `testConnection`. Optional hooks — `processInbound(integration, eventType, data)` (inbound side-effects, called by the webhook route; throw → 422) and `pollInbound(integration)` + `getPollIntervalMs(integration)` (scheduled inbound pull, called by `integration-worker` on a 60s tick, `INTEGRATION_POLL_TICK_MS`).
+- **Etsy connector** (`integrations/connectors/etsy/`): polls paid/unshipped receipts (Etsy has no webhooks) and imports them as sales orders via the order-event queue (`external_id = ETSY-<receipt_id>`, `event_key = etsy-receipt-<receipt_id>` for idempotent polling). Etsy listing SKUs are matched by WMS SKU code; receipts with unknown SKUs are held (failed event logged) until the SKUs exist. On `shipment.dispatched` it pushes tracking to Etsy's `createReceiptShipment`. Auth: OAuth refresh-token flow (`x-api-key` keystring + Bearer access token); Etsy rotates refresh tokens — the connector persists the new one to the integration config. Pure mapping/validation logic lives in `etsyLogic.js` (DB-free, unit-tested in `test/etsyLogic.test.js`).
 
 ## Key Patterns
 

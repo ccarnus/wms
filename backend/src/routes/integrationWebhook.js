@@ -220,6 +220,25 @@ router.post("/:connectorType", async (req, res, next) => {
       }
     }
 
+    // Connector-specific inbound side-effects (e.g. Etsy imports the receipt
+    // as a sales order). A thrown error rejects the webhook with 422.
+    if (typeof connector.processInbound === "function") {
+      try {
+        await connector.processInbound(integration, eventType, data);
+      } catch (err) {
+        await logIntegrationEvent({
+          integrationId: integration.id,
+          direction: "inbound",
+          eventType,
+          payload: data,
+          status: "failed",
+          errorMessage: err.message,
+          attempts: 1
+        });
+        return res.status(422).json({ error: err.message });
+      }
+    }
+
     await logIntegrationEvent({
       integrationId: integration.id,
       direction: "inbound",
