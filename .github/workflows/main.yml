@@ -39,7 +39,7 @@ jobs:
           test -n "$KEY" && echo "KEY is set" || echo "KEY is missing"
 
   deploy-production:
-    name: Deployment to development environment
+    name: Deployment to production environment
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: development
