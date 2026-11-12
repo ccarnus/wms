@@ -14,8 +14,42 @@ jobs:
 
       - name: deployment of the code
         env:
-          HOST: ${{ secrets.HOST_IPP }}
+          HOST: ${{ secrets.HOST_IP }}
           KEY: ${{ secrets.HOST_KEY }}
         run: |
           test -n "$HOST" && echo "HOST is set" || echo "HOST is missing"
           test -n "$KEY" && echo "KEY is set" || echo "KEY is missing"
+
+  deploy-staging:
+    name: Deployment to staging environment
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: deployment of the code
+        env:
+          HOST: ${{ secrets.HOST_IP }}
+          KEY: ${{ secrets.HOST_KEY }}
+        run: |
+          test -n "$HOST" && echo "HOST is set" || echo "HOST is missing"
+          test -n "$KEY" && echo "KEY is set" || echo "KEY is missing"
+
+  deploy-production:
+    name: Deployment to development environment
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: deployment of the code
+        env:
+          HOST: ${{ secrets.HOST_IP }}
+          KEY: ${{ secrets.HOST_KEY }}
+        run: |
+          echo "$HOST is there"
+          echo "$KEY is there"
