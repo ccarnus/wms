@@ -1,0 +1,21 @@
+name: deployment to dev staging and prod
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-development:
+    name: Deployment to development environment
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: deployment of the code
+        env:
+          HOST: ${{ secrets.HOST_IP }}
+          KEY: ${{ secrets.HOST_KEY }}
+        run: |
+          echo $HOST
+          echo $KEY
