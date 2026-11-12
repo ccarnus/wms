@@ -17,5 +17,5 @@ jobs:
           HOST: ${{ secrets.HOST_IP }}
           KEY: ${{ secrets.HOST_KEY }}
         run: |
-          echo $HOST
-          echo $KEY
+          echo "This is the IP:$HOST"
+          echo "This is the key $KEY"
