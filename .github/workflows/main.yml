@@ -17,5 +17,5 @@ jobs:
           HOST: ${{ secrets.HOST_IP }}
           KEY: ${{ secrets.HOST_KEY }}
         run: |
-          echo "This is the IP:$HOST"
-          echo "This is the key $KEY"
+          test -n "$HOST" && echo "HOST is set" || echo "HOST is missing"
+          test -n "$KEY" && echo "KEY is set" || echo "KEY is missing"
